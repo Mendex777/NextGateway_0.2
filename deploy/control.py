@@ -256,6 +256,27 @@ def apply(config, gateway, config_hash, n):
     run(['systemctl','enable','xray','ngpanel-gateway'],check=True)
     return 'Конфигурация применена. Xray запущен; шлюз ' + ('включён' if gateway else 'выключен')
 
+def install_network_recovery():
+    # Transient timers disappear on reboot. Recover an unconfirmed Netplan
+    # change before either the panel or gateway starts after a reboot.
+    unit=pathlib.Path('/etc/systemd/system/ngpanel-network-recovery.service')
+    text='''[Unit]
+Description=Restore unconfirmed NGPanel network changes
+After=network.target
+Before=ngpanel.service ngpanel-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/ngpanel/control.py network-revert
+
+[Install]
+WantedBy=multi-user.target
+'''
+    if not unit.exists() or unit.read_text()!=text:
+        atomic(unit,text,0o644)
+        run(['systemctl','daemon-reload'])
+    run(['systemctl','enable','ngpanel-network-recovery.service'])
+
 def network(n):
     n=validate_network(n,True)
     migrate_network()
@@ -263,6 +284,7 @@ def network(n):
     backup=pathlib.Path('/etc/ngpanel/network-backup.json')
     if backup.exists():
         raise ValueError('Сначала подтвердите или дождитесь отката предыдущего изменения сети')
+    install_network_recovery()
     atomic(backup,json.dumps({'content':target.read_text() if target.exists() else None,'network':n}),0o600)
     config='''network:
   version: 2
