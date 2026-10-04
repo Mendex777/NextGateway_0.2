@@ -13,3 +13,4 @@ backups/
 *credentials*
 sub.txt
 ngpanel-*.json
+dist/

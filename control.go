@@ -372,6 +372,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 	var e error
 	msg := "Сохранено; для применения нажмите «Применить конфигурацию»"
 	switch r.FormValue("action") {
+	case "panel-update-check", "panel-update-install", "panel-update-rollback":
+		err := requestPanelUpdate(strings.TrimPrefix(r.FormValue("action"), "panel-update-"))
+		return true, "Задание обновления панели поставлено в очередь", err
 	case "dns-diagnose":
 		message, err := diagnoseDNS()
 		return true, message, err

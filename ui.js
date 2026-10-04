@@ -39,3 +39,5 @@ if(groups){
 
 const deviceEdit=document.getElementById('device-edit');if(deviceEdit){deviceEdit.showModal();const clean=()=>{const u=new URL(location.href);u.searchParams.delete('edit');history.replaceState(null,'',u);};deviceEdit.addEventListener('close',clean);}
 document.querySelectorAll('.device-picker').forEach(select=>select.onchange=()=>{if(select.value){const field=select.closest('form').querySelector('[name="source"]');field.value=select.value;}});
+
+{const panel=document.getElementById('panel-update');if(panel){let wasRunning=panel.dataset.state==='running';setInterval(async()=>{try{const r=await fetch('/panel-update-status');if(!r.ok)return;const s=await r.json();document.getElementById('panel-update-message').textContent=s.Message;panel.querySelector('[value="panel-update-install"]').disabled=!s.Available||s.State==='running';panel.querySelector('[value="panel-update-rollback"]').disabled=!s.CanRollback||s.State==='running';if(wasRunning&&s.State!=='running'){location.reload();return;}wasRunning=s.State==='running';}catch{}},2000);}}

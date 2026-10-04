@@ -22,6 +22,8 @@ import (
 	"time"
 )
 
+var panelVersion = "v0.2.0"
+var panelCommit = "dev"
 var db *sql.DB
 var view = template.Must(template.ParseFiles("web.html"))
 
@@ -43,6 +45,8 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	PanelVersion, PanelCommit                                             string
+	PanelUpdate                                                           PanelUpdateStatus
 	Devices                                                               []Device
 	EditDevice                                                            *Device
 	DeviceDiscovery                                                       string
@@ -258,6 +262,20 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+	if r.URL.Path == "/panel-update-status" && r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(readPanelUpdate())
+		return
+	}
+	if r.URL.Path == "/health" && r.Method == http.MethodGet {
+		if e := db.Ping(); e != nil {
+			http.Error(w, "Database unavailable", 503)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"version": panelVersion, "commit": panelCommit})
+		return
+	}
 	if r.URL.Path == "/backup" {
 		backupHandler(w, r)
 		return
@@ -354,6 +372,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
+	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit
+	p.PanelUpdate = readPanelUpdate()
 	p.DNSDirectServers = setting("dns_direct_servers")
 	if p.DNSDirectServers == "" {
 		p.DNSDirectServers = p.DNS
@@ -470,6 +490,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Printf("NGPanel %s %s\n", panelVersion, panelCommit)
+		return
+	}
 	path := os.Getenv("NG_DB")
 	if path == "" {
 		path = "panel.db"

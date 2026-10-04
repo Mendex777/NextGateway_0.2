@@ -11,7 +11,9 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates golang-go build-essential python3
 umask 077
-go build -trimpath -o ngpanel .
+PANEL_VERSION=${PANEL_VERSION:-$(cat VERSION)}
+PANEL_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo source)
+go build -trimpath -ldflags "-X main.panelVersion=$PANEL_VERSION -X main.panelCommit=$PANEL_COMMIT" -o ngpanel .
 NG_LISTEN=${NG_LISTEN:-0.0.0.0:8080}
 case "$NG_LISTEN" in *[!a-zA-Z0-9.:_-]*|"") echo "Invalid NG_LISTEN" >&2; exit 1;; esac
 if [ -f /etc/systemd/system/xray.service ] && ! grep -q 'Xray managed by NGPanel' /etc/systemd/system/xray.service; then
@@ -29,6 +31,7 @@ install -m 755 deploy/install-xray.py /opt/ngpanel/install-xray.py
 install -m 755 deploy/control.py /opt/ngpanel/control.py
 install -m 755 deploy/index-geodata.py /opt/ngpanel/index-geodata.py
 install -m 755 deploy/update-geodata.py /opt/ngpanel/update-geodata.py
+install -m 755 deploy/update-panel.py /opt/ngpanel/update-panel.py
 install -d -m 750 -o root -g ngxray /etc/ngpanel
 install -d -m 750 -o ngxray -g ngxray /var/lib/ngxray
 install -m 755 ngpanel /opt/ngpanel/ngpanel
@@ -126,8 +129,26 @@ ExecStart=/usr/bin/python3 /opt/ngpanel/control.py gateway-restore
 [Install]
 WantedBy=multi-user.target
 EOF
+cat > /etc/systemd/system/ngpanel-update.path <<'EOF'
+[Unit]
+Description=NGPanel release update request
+[Path]
+PathExists=/var/lib/ngpanel/jobs/panel-update.request
+Unit=ngpanel-update.service
+[Install]
+WantedBy=multi-user.target
+EOF
+cat > /etc/systemd/system/ngpanel-update.service <<'EOF'
+[Unit]
+Description=NGPanel fixed release update
+StartLimitIntervalSec=0
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/ngpanel/update-panel.py
+TimeoutStartSec=300
+EOF
 systemctl daemon-reload
-systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path
+systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path ngpanel-update.path
 systemctl restart ngpanel
 
 echo "NGPanel ready: http://<VM-IPv4>:${NG_LISTEN##*:}/ — install gateway components from the web panel. Xray and interception have not been started by this installer."
