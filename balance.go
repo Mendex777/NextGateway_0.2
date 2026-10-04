@@ -32,6 +32,7 @@ type BalanceSettings struct {
 }
 
 type BalanceStatus struct {
+	Override           bool
 	Message, Tag, Name string
 	Samples            []GroupSample
 	Policy             string
@@ -301,7 +302,7 @@ func readGroupStatus(id string) BalanceStatus {
 	}
 	tag := info.Balancer.PrincipleTarget.Tag[0]
 	if tag == "block" {
-		return enrichGroupStatus(id, BalanceStatus{Tag: tag, Message: "Все участники недоступны; новые соединения группы блокируются"})
+		return enrichGroupStatus(id, BalanceStatus{Override: info.Balancer.Override.Target != "", Tag: tag, Message: "Все участники недоступны; новые соединения группы блокируются"})
 	}
 	nodeID := strings.TrimSuffix(strings.TrimPrefix(tag, "auto-vpn-"+id+"-"), "-")
 	var name string
@@ -309,5 +310,5 @@ func readGroupStatus(id string) BalanceStatus {
 	if name == "" {
 		name = tag
 	}
-	return enrichGroupStatus(id, BalanceStatus{Tag: tag, Name: name, Message: "Выход для новых соединений: " + name})
+	return enrichGroupStatus(id, BalanceStatus{Override: info.Balancer.Override.Target != "", Tag: tag, Name: name, Message: "Выход для новых соединений: " + name})
 }

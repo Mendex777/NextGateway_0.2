@@ -303,6 +303,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui.js")
 		return
 	}
+	if r.URL.Path == "/group-check-status" && r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(groupCheckStatus(r.URL.Query().Get("id")))
+		return
+	}
 	if r.URL.Path == "/balance-status" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(readGroupStatus(r.URL.Query().Get("id")))

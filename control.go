@@ -423,6 +423,10 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "start", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
 		e = enqueue(r.FormValue("action"), nil)
 		msg = "Задание поставлено в очередь"
+	case "group-select":
+		return true, "Узел группы выбран. Автовыбор продолжит работу при следующей проверке.", selectGroupNode(r.FormValue("group_id"), r.FormValue("node_id"))
+	case "group-check":
+		return true, "Проверка группы запущена; результат появится внутри группы.", startGroupCheck(r.FormValue("group_id"))
 	case "balance-delete":
 		e = deleteBalance(r.FormValue("group_id"))
 	case "balance-settings":

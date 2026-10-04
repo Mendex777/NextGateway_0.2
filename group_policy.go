@@ -202,11 +202,13 @@ func overrideGroup(id, target string) error {
 }
 
 type groupDecision struct {
-	Current  string
-	Bad      int
-	Checked  int64
-	Switched time.Time
-	Reason   string
+	Current       string
+	Bad           int
+	Checked       int64
+	Switched      time.Time
+	Reason        string
+	Manual        bool
+	ManualChecked int64
 }
 
 func decideGroup(g BalanceGroup, all map[string]GroupSample, state groupDecision, now time.Time) groupDecision {
@@ -269,6 +271,8 @@ func decideGroup(g BalanceGroup, all map[string]GroupSample, state groupDecision
 	return choose(best.Tag, fmt.Sprintf("Порог %d мс превышен; выбран более быстрый узел", g.ThresholdMS))
 }
 
+var groupActionLock sync.Mutex
+
 var groupControl = struct {
 	sync.Mutex
 	states map[string]groupDecision
@@ -291,25 +295,48 @@ func groupWorker() {
 		snapshot, _ := json.Marshal(runtime.Groups)
 		key := runtime.ConfigHash + string(snapshot)
 		groupControl.Lock()
-		if hash != key {
-			hash = key
+		if hash != "" && hash != key {
 			groupControl.states = map[string]groupDecision{}
 			groupControl.errors = map[string]string{}
 		}
 		groupControl.Unlock()
+		hash = key
 		for _, g := range runtime.Groups {
 			normalizeGroup(&g)
-			if g.Mode == "fastest" {
-				continue
-			}
+
 			if validateGroupPolicy(g) != nil {
 				continue
 			}
+			groupActionLock.Lock()
 			groupControl.Lock()
 			old := groupControl.states[g.ID]
 			groupControl.Unlock()
 			if old.Current == "" {
-				old.Current = readGroupStatus(g.ID).Tag
+				status := readGroupStatus(g.ID)
+				old.Current = status.Tag
+				if g.Mode == "fastest" && status.Override {
+					old.Manual = true
+					old.ManualChecked = -1
+				}
+			}
+			if g.Mode == "fastest" && !old.Manual {
+				groupActionLock.Unlock()
+				continue
+			}
+			if old.Manual && all[old.Current].Checked == old.ManualChecked {
+				groupActionLock.Unlock()
+				continue
+			}
+			old.Manual = false
+			if g.Mode == "fastest" {
+				e = overrideGroup(g.ID, "")
+				groupControl.Lock()
+				if e == nil {
+					delete(groupControl.states, g.ID)
+				}
+				groupControl.Unlock()
+				groupActionLock.Unlock()
+				continue
 			}
 			next := decideGroup(g, all, old, time.Now())
 			// Reassert the override: it may be lost on an independent core restart.
@@ -322,6 +349,7 @@ func groupWorker() {
 				delete(groupControl.errors, g.ID)
 			}
 			groupControl.Unlock()
+			groupActionLock.Unlock()
 		}
 	}
 }
