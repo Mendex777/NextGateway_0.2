@@ -219,6 +219,10 @@ func restoreBackup(raw []byte) error {
 	}
 	groupIDs := map[string]bool{}
 	for _, g := range groups {
+		normalizeGroup(&g)
+		if e := validateGroupPolicy(g); e != nil {
+			return e
+		}
 		if !validTarget("group:"+g.ID) || groupIDs[g.ID] || strings.TrimSpace(g.Name) == "" || len(g.Name) > 200 {
 			return fmt.Errorf("Некорректная группа в бекапе")
 		}

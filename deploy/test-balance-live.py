@@ -95,8 +95,12 @@ with tempfile.TemporaryDirectory(prefix='ngpanel-balance-test-') as temporary:
                 if not stopping.is_set():stream_errors.append(str(e))
         reader=threading.Thread(target=read_stream,daemon=True);reader.start();time.sleep(.4)
         initial=len(received)
+        subprocess.run([XRAY,'api','bo','-s=127.0.0.1:'+str(api),'-b','auto-vpn','auto-vpn-a'],check=True,stdout=subprocess.DEVNULL)
         delays['a']=.35;delays['b']=.01
-        wait_for('auto-vpn-b');assert request()=='b';time.sleep(.4)
+        wait_for('auto-vpn-b');assert request()=='a','Override did not retain current node'
+        subprocess.run([XRAY,'api','bo','-s=127.0.0.1:'+str(api),'-b','auto-vpn','auto-vpn-b'],check=True,stdout=subprocess.DEVNULL)
+        assert request()=='b';time.sleep(.4)
+        subprocess.run([XRAY,'api','bo','-s=127.0.0.1:'+str(api),'-b','auto-vpn','-r'],check=True,stdout=subprocess.DEVNULL)
         assert len(received)>initial and not stream_errors,'Live connection lost during latency switch'
         assert main.poll() is None
         print('Latency switch: A -> B; existing A stream remains open')

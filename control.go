@@ -26,6 +26,8 @@ type Rule struct {
 	Name, Kind, Value, Target string
 }
 type Runtime struct {
+	Groups []BalanceGroup
+
 	Balance                                     bool
 	AppliedNetwork                              GatewayNetwork
 	State, Message, Updated, Action, ConfigHash string
@@ -33,6 +35,8 @@ type Runtime struct {
 	Network                                     string
 }
 type Job struct {
+	Groups []BalanceGroup `json:"groups,omitempty"`
+
 	Network    GatewayNetwork `json:"network"`
 	ID, Action string
 	Config     map[string]any `json:"config,omitempty"`
@@ -304,7 +308,7 @@ func buildConfig() (map[string]any, error) {
 func enqueue(action string, config map[string]any) error {
 	jobLock.Lock()
 	defer jobLock.Unlock()
-	j := Job{Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
+	j := Job{Groups: balanceGroups(), Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
 	if action == "network" || (action == "apply" && j.Gateway) {
 		if e := saveNetwork(j.Network); e != nil {
 			return e

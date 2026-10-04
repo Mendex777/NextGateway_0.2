@@ -440,7 +440,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			b, _ := json.Marshal(c)
 			hash := sha256.Sum256(b)
-			p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
+			p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups) || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
 		}
 		p.Version = command("xray", "version")
 		p.Service = command("systemctl", "is-active", "xray")
@@ -467,7 +467,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if c, e := buildConfig(); e == nil {
 			raw, _ := json.Marshal(c)
 			hash := sha256.Sum256(raw)
-			p.BalancePending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash
+			p.BalancePending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups)
 		}
 
 		for i := range p.Sources {
@@ -581,6 +581,7 @@ func main() {
 	}
 	log.Printf("NGPanel listening on %s", addr)
 	go subscriptionWorker()
+	go groupWorker()
 	s := http.Server{Addr: addr, Handler: http.HandlerFunc(handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Fatal(s.ListenAndServe())
 }

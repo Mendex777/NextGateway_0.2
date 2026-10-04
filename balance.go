@@ -14,11 +14,15 @@ import (
 )
 
 type BalanceGroup struct {
-	ID       string              `json:"id"`
-	Name     string              `json:"name"`
-	Nodes    []string            `json:"nodes"`
-	Interval int                 `json:"interval"`
-	Members  []BalanceMemberView `json:"-"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Nodes       []string            `json:"nodes"`
+	Interval    int                 `json:"interval"`
+	Mode        string              `json:"mode,omitempty"`
+	ThresholdMS int                 `json:"threshold_ms,omitempty"`
+	Failures    int                 `json:"failures,omitempty"`
+	Cooldown    int                 `json:"cooldown"`
+	Members     []BalanceMemberView `json:"-"`
 }
 
 type BalanceSettings struct {
@@ -29,6 +33,9 @@ type BalanceSettings struct {
 
 type BalanceStatus struct {
 	Message, Tag, Name string
+	Samples            []GroupSample
+	Policy             string
+	Controller         string
 }
 
 type BalanceMemberView struct {
@@ -101,6 +108,9 @@ func balanceGroups() []BalanceGroup {
 	raw := setting("balance_groups")
 	if raw != "" {
 		json.Unmarshal([]byte(raw), &groups)
+		for i := range groups {
+			normalizeGroup(&groups[i])
+		}
 		return groups
 	}
 	// Keep the previous pool as an independent, unassigned group.
@@ -132,6 +142,11 @@ func saveBalance(r *http.Request) error {
 	id := r.FormValue("group_id")
 	name := strings.TrimSpace(r.FormValue("name"))
 	interval, _ := strconv.Atoi(r.FormValue("interval"))
+	policy := BalanceGroup{Mode: r.FormValue("policy"), ThresholdMS: formInt(r, "threshold_ms", 1000), Failures: formInt(r, "failures", 2), Cooldown: formInt(r, "cooldown", 60)}
+	normalizeGroup(&policy)
+	if e := validateGroupPolicy(policy); e != nil {
+		return e
+	}
 	if name == "" || len(name) > 200 {
 		return fmt.Errorf("Название группы: от 1 до 200 символов")
 	}
@@ -151,7 +166,11 @@ func saveBalance(r *http.Request) error {
 	found := false
 	for i := range groups {
 		if groups[i].ID == id {
-			groups[i] = BalanceGroup{ID: id, Name: name, Nodes: ids, Interval: interval}
+			policy.ID = id
+			policy.Name = name
+			policy.Nodes = ids
+			policy.Interval = interval
+			groups[i] = policy
 			found = true
 		}
 	}
@@ -244,7 +263,7 @@ func addGroups(config map[string]any) error {
 	config["outbounds"] = out
 	routing["balancers"] = balancers
 	config["observatory"] = map[string]any{"subjectSelector": []string{"auto-vpn-"}, "probeUrl": "https://www.google.com/generate_204", "probeInterval": fmt.Sprintf("%ds", interval), "enableConcurrency": true}
-	config["api"] = map[string]any{"tag": "balance-api", "listen": "127.0.0.1:10085", "services": []string{"RoutingService"}}
+	config["api"] = map[string]any{"tag": "balance-api", "listen": "127.0.0.1:10085", "services": []string{"RoutingService", "ObservatoryService"}}
 	dns := config["dns"].(map[string]any)
 	servers := dns["servers"].([]any)
 	dns["servers"] = append([]any{map[string]any{"address": setting("dns_direct"), "domains": hosts, "skipFallback": true, "finalQuery": true, "tag": "dns-bootstrap"}}, servers...)
@@ -263,6 +282,9 @@ func readGroupStatus(id string) BalanceStatus {
 	}
 	var info struct {
 		Balancer struct {
+			Override struct {
+				Target string `json:"target"`
+			} `json:"override"`
 			PrincipleTarget struct {
 				Tag []string `json:"tag"`
 			} `json:"principleTarget"`
@@ -271,15 +293,21 @@ func readGroupStatus(id string) BalanceStatus {
 	if json.Unmarshal(raw, &info) != nil {
 		return BalanceStatus{Message: "Не удалось прочитать состояние балансера"}
 	}
+	if info.Balancer.Override.Target != "" {
+		info.Balancer.PrincipleTarget.Tag = []string{info.Balancer.Override.Target}
+	}
 	if len(info.Balancer.PrincipleTarget.Tag) == 0 || info.Balancer.PrincipleTarget.Tag[0] == "" {
-		return BalanceStatus{Message: "Нет доступного выхода или первые проверки ещё не завершены; новые VPN-соединения блокируются"}
+		return enrichGroupStatus(id, BalanceStatus{Message: "Нет доступного выхода или первые проверки ещё не завершены; новые VPN-соединения блокируются"})
 	}
 	tag := info.Balancer.PrincipleTarget.Tag[0]
+	if tag == "block" {
+		return enrichGroupStatus(id, BalanceStatus{Tag: tag, Message: "Все участники недоступны; новые соединения группы блокируются"})
+	}
 	nodeID := strings.TrimSuffix(strings.TrimPrefix(tag, "auto-vpn-"+id+"-"), "-")
 	var name string
 	db.QueryRow("SELECT name FROM nodes WHERE id=?", nodeID).Scan(&name)
 	if name == "" {
 		name = tag
 	}
-	return BalanceStatus{Tag: tag, Name: name, Message: "Выход для новых соединений: " + name}
+	return enrichGroupStatus(id, BalanceStatus{Tag: tag, Name: name, Message: "Выход для новых соединений: " + name})
 }

@@ -129,3 +129,27 @@ func TestGroupBackupAndMissingGroupRollback(t *testing.T) {
 		t.Fatal("group restore damaged data")
 	}
 }
+
+func TestInvalidGroupPolicyRestoreRollsBack(t *testing.T) {
+	backupDB(t)
+	db.Exec("INSERT INTO nodes SELECT 4,source_id,uri,name,host,port,transport,security FROM nodes WHERE id=3")
+	g := BalanceGroup{ID: "1", Name: "Example", Nodes: []string{"3", "4"}, Interval: 30, Mode: "threshold", ThresholdMS: 1000, Failures: 2, Cooldown: 60}
+	saveGroups([]BalanceGroup{g})
+	before, _ := exportBackup()
+	g.Cooldown = -1
+	saveGroups([]BalanceGroup{g})
+	bad, _ := exportBackup()
+	if e := restoreBackup(before); e != nil {
+		t.Fatal(e)
+	}
+	if e := restoreBackup(bad); e == nil {
+		t.Fatal("invalid threshold policy restored")
+	}
+	after, _ := exportBackup()
+	var a, b panelBackup
+	json.Unmarshal(before, &a)
+	json.Unmarshal(after, &b)
+	if string(a.Data) != string(b.Data) {
+		t.Fatal("failed policy restore changed data")
+	}
+}

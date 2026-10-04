@@ -64,7 +64,7 @@ def validate(config):
             raise ValueError('Unexpected outbound protocol')
     has_balance='observatory' in config or 'api' in config or bool(config['routing'].get('balancers'))
     if has_balance:
-        api={'tag':'balance-api','listen':'127.0.0.1:10085','services':['RoutingService']}
+        api={'tag':'balance-api','listen':'127.0.0.1:10085','services':['RoutingService','ObservatoryService']}
         if config.get('api')!=api:raise ValueError('Only local balance API is allowed')
         obs=config.get('observatory',{})
         if not isinstance(obs,dict) or set(obs)!={'subjectSelector','probeUrl','probeInterval','enableConcurrency'} or obs.get('subjectSelector')!=['auto-vpn-'] or obs.get('probeUrl')!='https://www.google.com/generate_204' or obs.get('enableConcurrency') is not True:
@@ -238,7 +238,28 @@ def restore(config_bytes, meta, was_active):
     else:
         disable_gateway()
 
-def apply(config, gateway, config_hash, n):
+def validate_group_policies(config,groups):
+    if not isinstance(groups,list) or len(groups)>16:raise ValueError('Unexpected group policies')
+    used={b['tag'][6:]:b for b in config['routing'].get('balancers',[])}
+    result=[];seen=set()
+    for g in groups:
+        if not isinstance(g,dict):raise ValueError('Unexpected group policy')
+        gid=g.get('id','')
+        if not isinstance(gid,str) or not re.fullmatch(r'[1-9][0-9]*',gid) or gid in seen:raise ValueError('Unexpected group policy ID')
+        seen.add(gid)
+        mode=g.get('mode') or 'fastest'
+        threshold=g.get('threshold_ms',1000);failures=g.get('failures',2);cooldown=g.get('cooldown',60)
+        if type(g.get('interval'))!=int or not 10<=g['interval']<=600:raise ValueError('Unexpected group interval')
+        if mode not in ('fastest','threshold','failover') or type(threshold)!=int or not 50<=threshold<=60000 or type(failures)!=int or not 1<=failures<=10 or type(cooldown)!=int or not 0<=cooldown<=3600:raise ValueError('Unexpected switching policy')
+        if gid in used:
+            prefix='auto-vpn-'+gid+'-'
+            actual={o['tag'][len(prefix):-1] for o in config['outbounds'] if o['tag'].startswith(prefix)}
+            if set(g.get('nodes',[]))!=actual:raise ValueError('Group policy members differ from config')
+            result.append(dict(g,mode=mode,threshold_ms=threshold,failures=failures,cooldown=cooldown))
+    return result
+
+def apply(config, gateway, config_hash, n, groups=None):
+    policies=validate_group_policies(config,groups or [])
     validate(config)
     gid = pwd.getpwnam('ngxray').pw_gid
     candidate = pathlib.Path('/etc/ngpanel/candidate.json')
@@ -287,7 +308,7 @@ def apply(config, gateway, config_hash, n):
     if previous is not None:
         atomic(BACKUP,previous,0o640,gid)
         atomic(PREVIOUS_META,json.dumps(old_meta),0o600)
-    meta={'gateway':gateway,'hash':config_hash,'network':n if gateway else {},'balance':'observatory' in config}
+    meta={'gateway':gateway,'hash':config_hash,'network':n if gateway else {},'balance':'observatory' in config,'groups':policies}
     atomic(META,json.dumps(meta),0o600)
     run(['systemctl','enable','xray','ngpanel-gateway'],check=True)
     return 'Конфигурация применена. Xray запущен; шлюз ' + ('включён' if gateway else 'выключен')
@@ -389,7 +410,7 @@ if __name__ == '__main__':
             runtime.update(State='running',Action=action,Message='Выполняется задание')
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             message=''
-            if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''),job.get('network'))
+            if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''),job.get('network'),job.get('groups',[]))
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)
                 run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils','ieee-data'],timeout=150)
@@ -434,6 +455,8 @@ if __name__ == '__main__':
             meta=load(META)
             runtime['AppliedNetwork']=meta.get('network',{})
             runtime['Balance']=bool(meta.get('balance'))
+            runtime['Groups']=meta.get('groups',[])
             runtime.update(Action=action,Gateway=bool(meta.get('gateway')),ConfigHash=meta.get('hash',''),Updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             request.unlink(missing_ok=True)
+
