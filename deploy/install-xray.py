@@ -46,7 +46,7 @@ try:
     tmp.chmod(0o755)
     subprocess.run([str(tmp), 'version'], check=True, timeout=15, capture_output=True)
     os.replace(tmp, target)
-    report('Установлен Xray ' + release['tag_name'] + '. Служба и шлюз ещё не настроены.')
+    report('Установлен Xray ' + release['tag_name'] + '.')
 except Exception as exc:
     report('Ошибка установки: ' + str(exc))
     raise

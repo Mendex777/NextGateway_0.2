@@ -52,6 +52,7 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	OperationAction, OperationSince                                       string
 	PanelVersion, PanelCommit                                             string
 	PanelUpdate                                                           PanelUpdateStatus
 	Devices                                                               []Device
@@ -269,6 +270,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+	if r.URL.Path == "/operation-status" && r.Method == http.MethodGet {
+		operationHandler(w, r)
+		return
+	}
 	if r.URL.Path == "/panel-update-status" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(readPanelUpdate())
@@ -313,6 +318,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid form", 400)
 			return
 		}
+		started := time.Now().UTC().Format(time.RFC3339Nano)
 		msg := "Сохранено"
 		handled, controlMessage, controlErr := controlAction(r)
 		if handled {
@@ -371,7 +377,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
-		http.Redirect(w, r, "/?tab="+url.QueryEscape(r.FormValue("tab"))+"&message="+url.QueryEscape(msg), 303)
+		redirect := "/?tab=" + url.QueryEscape(r.FormValue("tab")) + "&message=" + url.QueryEscape(msg)
+		if e == nil && operationKind(r.FormValue("action")) != "" {
+			redirect += "&operation=" + url.QueryEscape(r.FormValue("action")) + "&since=" + url.QueryEscape(started)
+		}
+		http.Redirect(w, r, redirect, 303)
 		return
 	}
 	if r.Method != "GET" {
@@ -379,6 +389,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
+	p.OperationAction, p.OperationSince = r.URL.Query().Get("operation"), r.URL.Query().Get("since")
 	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit
 	p.PanelUpdate = readPanelUpdate()
 	p.DNSDirectServers = setting("dns_direct_servers")
