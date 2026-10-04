@@ -9,11 +9,17 @@ cd "$PROJECT_DIR"
 [ "$(dpkg --print-architecture)" = amd64 ] || { echo "Beta supports amd64" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates golang-go build-essential python3
+if [ "${NG_PREBUILT:-0}" = 1 ]; then
+ apt-get install -y --no-install-recommends ca-certificates python3
+else
+ apt-get install -y --no-install-recommends ca-certificates golang-go build-essential python3
+fi
 umask 077
+if [ "${NG_PREBUILT:-0}" != 1 ]; then
 PANEL_VERSION=${PANEL_VERSION:-$(cat VERSION)}
 PANEL_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo source)
 go build -trimpath -ldflags "-X main.panelVersion=$PANEL_VERSION -X main.panelCommit=$PANEL_COMMIT" -o ngpanel .
+fi
 NG_LISTEN=${NG_LISTEN:-0.0.0.0:8080}
 case "$NG_LISTEN" in *[!a-zA-Z0-9.:_-]*|"") echo "Invalid NG_LISTEN" >&2; exit 1;; esac
 if [ -f /etc/systemd/system/xray.service ] && ! grep -q 'Xray managed by NGPanel' /etc/systemd/system/xray.service; then

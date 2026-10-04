@@ -19,3 +19,5 @@ manifest={'schema':1,'version':sys.argv[2],'commit':sys.argv[3],'sha256':{n:hash
 PY
 tar -czf dist/ngpanel-linux-amd64.tar.gz -C "$STAGE" ngpanel web.html ui.js control.py install-xray.py index-geodata.py update-geodata.py update-panel.py manifest.json
 sha256sum dist/ngpanel-linux-amd64.tar.gz
+
+cp deploy/install-panel.sh dist/ngpanel-install.sh
