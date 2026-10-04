@@ -110,6 +110,13 @@ def applied_network(meta):
                     return validate_network(dict(interface=r['dev'],address=a['local'],cidr=str(subnet),router=r['gateway']),True)
     raise ValueError('Не удалось определить применённую сеть')
 
+def migrate_network():
+    meta=load(META)
+    if meta.get('gateway') and not meta.get('network'):
+        meta['network']=applied_network(meta)
+        atomic(META,json.dumps(meta),0o600)
+    return meta
+
 def nft_text(n):
     n=validate_network(n)
     text = '''table inet ngpanel {
@@ -229,7 +236,7 @@ def apply(config, gateway, config_hash, n):
         prefix='delete table inet ngpanel\n' if run(['nft','list','table','inet','ngpanel'],check=False).returncode==0 else ''
         run(['nft','-c','-f','-'],input=prefix+text)
     previous = CONF.read_text() if CONF.exists() else None
-    old_meta = load(META)
+    old_meta = migrate_network()
     was_active = active()
     try:
         os.replace(candidate,CONF)
@@ -251,6 +258,7 @@ def apply(config, gateway, config_hash, n):
 
 def network(n):
     n=validate_network(n,True)
+    migrate_network()
     target=pathlib.Path('/etc/netplan/90-ngpanel.yaml')
     backup=pathlib.Path('/etc/ngpanel/network-backup.json')
     if backup.exists():
@@ -299,9 +307,13 @@ def network_revert():
 
 if __name__ == '__main__':
     if len(sys.argv)>1:
-        if sys.argv[1]=='network-revert': network_revert()
+        if sys.argv[1]=='network-revert':
+            with open('/run/ngpanel-control.lock','w') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX)
+                network_revert()
         elif sys.argv[1]=='gateway-restore':
-            if load(META).get('gateway'): enable_gateway(applied_network(load(META)))
+            meta=migrate_network()
+            if meta.get('gateway'): enable_gateway(applied_network(meta))
         else: raise ValueError('Unknown fixed operation')
         sys.exit(0)
     with open('/run/ngpanel-control.lock','w') as lock:
