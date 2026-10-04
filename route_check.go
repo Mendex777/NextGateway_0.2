@@ -232,7 +232,10 @@ func explainDNS(c *RouteCheck) {
 		tags, _ := rule["inboundTag"].([]string)
 		for _, t := range tags {
 			if t == tag {
-				c.DNSTarget = rule["outboundTag"].(string)
+				c.DNSTarget, _ = rule["outboundTag"].(string)
+				if bal, ok := rule["balancerTag"].(string); ok {
+					c.DNSTarget = "group:" + strings.TrimPrefix(bal, "group-")
+				}
 			}
 		}
 	}

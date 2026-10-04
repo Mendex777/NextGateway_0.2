@@ -53,10 +53,9 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
-	BalanceMembers                                                        []BalanceMemberView
+	Groups                                                                []BalanceGroup
+	EditGroup                                                             *BalanceGroup
 	BalancePending                                                        bool
-	Balance                                                               BalanceSettings
-	BalanceStatus                                                         BalanceStatus
 	Network, DetectedNetwork                                              GatewayNetwork
 	NetworkError                                                          string
 	OperationAction, OperationSince                                       string
@@ -306,7 +305,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/balance-status" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(readBalanceStatus())
+		json.NewEncoder(w).Encode(readGroupStatus(r.URL.Query().Get("id")))
 		return
 	}
 	if r.URL.Path == "/probe-status" && r.Method == http.MethodGet {
@@ -348,7 +347,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			case "settings":
 				msg = "Маршрут сохранён. Нажмите «Применить конфигурацию», чтобы изменить трафик."
 				mode := r.FormValue("mode")
-				if mode != "direct" && mode != "proxy" {
+				if err := validateRuleNode(mode); err != nil {
 					http.Error(w, "Invalid mode", 400)
 					return
 				}
@@ -411,10 +410,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.NetworkError = e.Error()
 	}
-	p.Balance = balanceSettings()
-	if p.Tab == "subscriptions" {
-		p.BalanceStatus = readBalanceStatus()
-	}
+	p.Groups = balanceGroups()
+
 	p.OperationAction, p.OperationSince = r.URL.Query().Get("operation"), r.URL.Query().Get("since")
 	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit
 	p.PanelUpdate = readPanelUpdate()
@@ -460,7 +457,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if p.Tab == "subscriptions" {
 		p.Nodes = allNodes()
 		p.Sources = sources()
-		p.BalanceMembers = balanceMemberViews(p.Balance, p.Selected, p.Nodes, p.Sources, p.BalanceStatus.Tag)
+		for i := range p.Groups {
+			g := &p.Groups[i]
+			g.Members = balanceMemberViews(BalanceSettings{Nodes: g.Nodes}, "", p.Nodes, p.Sources, "")
+			if g.ID == r.URL.Query().Get("group") {
+				p.EditGroup = g
+			}
+		}
 		if c, e := buildConfig(); e == nil {
 			raw, _ := json.Marshal(c)
 			hash := sha256.Sum256(raw)
@@ -563,6 +566,11 @@ func main() {
  INSERT OR IGNORE INTO settings VALUES('default_route','direct'),('dns_direct','1.1.1.1'),('dns_mode','direct'),('gateway_enabled','0'),('selected_node','');`)
 	if e != nil {
 		log.Fatal(e)
+	}
+	if setting("balance_groups") == "" {
+		if e := saveGroups(balanceGroups()); e != nil {
+			log.Fatal(e)
+		}
 	}
 	addr := os.Getenv("NG_LISTEN")
 	if addr == "" {

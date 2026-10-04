@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -188,27 +190,89 @@ func restoreBackup(raw []byte) error {
 			return fmt.Errorf("В бекапе отсутствует выбранное подключение")
 		}
 	}
-	var balanceRaw string
-	tx.QueryRow("SELECT value FROM settings WHERE key='balance_settings'").Scan(&balanceRaw)
-	if balanceRaw != "" {
-		var b BalanceSettings
-		if json.Unmarshal([]byte(balanceRaw), &b) != nil {
-			return fmt.Errorf("Некорректная группа автовыбора в бекапе")
+	var groupRaw string
+	tx.QueryRow("SELECT value FROM settings WHERE key='balance_groups'").Scan(&groupRaw)
+	var groups []BalanceGroup
+	if groupRaw != "" {
+		if json.Unmarshal([]byte(groupRaw), &groups) != nil {
+			return fmt.Errorf("Некорректные группы в бекапе")
 		}
-		ids := b.Nodes
-		if b.Enabled {
-			var e error
-			ids, e = balanceMembers(b, selected)
-			if e != nil {
-				return e
+	} else {
+		var oldRaw string
+		tx.QueryRow("SELECT value FROM settings WHERE key='balance_settings'").Scan(&oldRaw)
+		if oldRaw != "" {
+			var old BalanceSettings
+			if json.Unmarshal([]byte(oldRaw), &old) != nil {
+				return fmt.Errorf("Некорректная группа в бекапе")
 			}
+			if len(old.Nodes) > 0 {
+				ids := append([]string{}, old.Nodes...)
+				if selected != "" && !slices.Contains(ids, selected) {
+					ids = append(ids, selected)
+				}
+				groups = append(groups, BalanceGroup{ID: "1", Name: "Группа автовыбора VPN", Nodes: ids, Interval: old.Interval})
+			}
+		}
+	}
+	if len(groups) > 16 {
+		return fmt.Errorf("Слишком много групп в бекапе")
+	}
+	groupIDs := map[string]bool{}
+	for _, g := range groups {
+		if !validTarget("group:"+g.ID) || groupIDs[g.ID] || strings.TrimSpace(g.Name) == "" || len(g.Name) > 200 {
+			return fmt.Errorf("Некорректная группа в бекапе")
+		}
+		groupIDs[g.ID] = true
+		ids, e := balanceMembers(BalanceSettings{Nodes: g.Nodes, Interval: g.Interval}, "")
+		if e != nil {
+			return e
 		}
 		for _, id := range ids {
 			var count int
 			tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", id).Scan(&count)
 			if count != 1 {
-				return fmt.Errorf("В бекапе отсутствует участник группы автовыбора")
+				return fmt.Errorf("В бекапе отсутствует участник группы")
 			}
+		}
+	}
+	var mode string
+	tx.QueryRow("SELECT value FROM settings WHERE key='default_route'").Scan(&mode)
+	if mode == "" {
+		mode = "direct"
+	}
+	if !validTarget(mode) {
+		return fmt.Errorf("Некорректный маршрут по умолчанию")
+	}
+	targets := []string{mode}
+	rowsTargets, e := tx.Query("SELECT target FROM rules")
+	if e != nil {
+		return e
+	}
+	for rowsTargets.Next() {
+		var target string
+		rowsTargets.Scan(&target)
+		targets = append(targets, target)
+	}
+	rowsTargets.Close()
+	for _, target := range targets {
+		if !validTarget(target) {
+			return fmt.Errorf("Некорректный выход в бекапе")
+		}
+		if strings.HasPrefix(target, "group:") && !groupIDs[strings.TrimPrefix(target, "group:")] {
+			return fmt.Errorf("В бекапе отсутствует группа маршрута")
+		}
+		if strings.HasPrefix(target, "node:") {
+			var count int
+			tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", target[5:]).Scan(&count)
+			if count != 1 {
+				return fmt.Errorf("В бекапе отсутствует подключение маршрута")
+			}
+		}
+	}
+	rawGroups, _ := json.Marshal(groups)
+	if groupRaw != "" || len(groups) > 0 {
+		if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES('balance_groups',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", string(rawGroups)); e != nil {
+			return e
 		}
 	}
 	rows, e := tx.Query("PRAGMA foreign_key_check")

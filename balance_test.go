@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,10 +15,11 @@ func TestBalanceRoutesDNSAndKeepsFixedNodes(t *testing.T) {
 	configDatabase(t)
 	db.Exec("INSERT INTO nodes VALUES(1,'vless://a4d22397-77f8-4e75-96c1-027304162e20@one.test:443?security=none'),(2,'vless://a4d22397-77f8-4e75-96c1-027304162e20@two.test:443?security=none')")
 	saveSetting("selected_node", "1")
-	saveSetting("dns_mode", "proxy")
-	db.Exec("INSERT INTO rules VALUES(1,1,'auto','domain','domain:auto.test','proxy'),(2,2,'fixed','domain','domain:fixed.test','node:2')")
-	raw, _ := json.Marshal(BalanceSettings{Enabled: true, Nodes: []string{"2"}, Interval: 30})
-	saveSetting("balance_settings", string(raw))
+	saveSetting("dns_mode", "rules")
+	saveSetting("default_route", "group:2")
+	db.Exec("INSERT INTO rules VALUES(1,1,'auto','domain','domain:auto.test','group:1'),(2,2,'fixed','domain','domain:fixed.test','node:2')")
+	raw, _ := json.Marshal([]BalanceGroup{{ID: "1", Name: "First", Nodes: []string{"1", "2"}, Interval: 30}, {ID: "2", Name: "Second", Nodes: []string{"2", "1"}, Interval: 60}})
+	saveSetting("balance_groups", string(raw))
 	c, e := buildConfig()
 	if e != nil {
 		t.Fatal(e)
@@ -30,10 +32,8 @@ func TestBalanceRoutesDNSAndKeepsFixedNodes(t *testing.T) {
 	groupRules, fixed := 0, false
 	for _, r := range routing["rules"].([]any) {
 		entry := r.(map[string]any)
-		if entry["outboundTag"] == "proxy" {
-			t.Fatal("DNS or routing bypassed group")
-		}
-		if entry["balancerTag"] == "auto-vpn" {
+
+		if entry["balancerTag"] == "group-1" {
 			groupRules++
 		}
 		if entry["outboundTag"] == "node-2" {
@@ -47,7 +47,7 @@ func TestBalanceRoutesDNSAndKeepsFixedNodes(t *testing.T) {
 	for _, o := range c["outbounds"].([]any) {
 		tags[o.(map[string]any)["tag"].(string)] = true
 	}
-	if !tags["auto-vpn-1-"] || !tags["auto-vpn-2-"] || tags["proxy"] || !tags["node-2"] {
+	if !tags["auto-vpn-1-1-"] || !tags["auto-vpn-1-2-"] || !tags["auto-vpn-2-1-"] || !tags["auto-vpn-2-2-"] || !tags["node-2"] {
 		t.Fatal("outbound group incorrect")
 	}
 	encoded, _ := json.Marshal(c["dns"])
@@ -94,9 +94,69 @@ func TestBalanceRejectsMissingMemberAndLimits(t *testing.T) {
 		{Enabled: true, Nodes: []string{"2"}, Interval: 1},
 	} {
 		raw, _ := json.Marshal(b)
-		saveSetting("balance_settings", string(raw))
+		raw, _ = json.Marshal([]BalanceGroup{{ID: "1", Name: "Bad", Nodes: b.Nodes, Interval: b.Interval}})
+		saveSetting("balance_groups", string(raw))
+		saveSetting("default_route", "group:1")
 		if _, e := buildConfig(); e == nil {
 			t.Fatal("invalid group accepted")
 		}
+	}
+}
+
+func TestGroupsDoNotReplaceSelectedVPN(t *testing.T) {
+	configDatabase(t)
+	db.Exec("INSERT INTO nodes VALUES(1,'vless://a4d22397-77f8-4e75-96c1-027304162e20@one.test:443?security=none'),(2,'vless://a4d22397-77f8-4e75-96c1-027304162e20@two.test:443?security=none')")
+	saveSetting("selected_node", "1")
+	saveSetting("default_route", "proxy")
+	saveGroups([]BalanceGroup{{ID: "1", Name: "Unused", Nodes: []string{"1", "2"}, Interval: 30}})
+	c, e := buildConfig()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, ok := c["observatory"]; ok {
+		t.Fatal("unassigned group activated")
+	}
+	routes := c["routing"].(map[string]any)["rules"].([]any)
+	if routes[len(routes)-1].(map[string]any)["outboundTag"] != "proxy" {
+		t.Fatal("group hijacked selected VPN")
+	}
+	saveSetting("default_route", "group:1")
+	if e = deleteBalance("1"); e == nil {
+		t.Fatal("referenced group deleted")
+	}
+	saveSetting("default_route", "direct")
+	if e = deleteBalance("1"); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestTenIndependentGroups(t *testing.T) {
+	configDatabase(t)
+	db.Exec("INSERT INTO nodes VALUES(1,'vless://a4d22397-77f8-4e75-96c1-027304162e20@one.test:443?security=none'),(2,'vless://a4d22397-77f8-4e75-96c1-027304162e20@two.test:443?security=none')")
+	groups := []BalanceGroup{}
+	for i := 1; i <= 10; i++ {
+		id := fmt.Sprint(i)
+		groups = append(groups, BalanceGroup{ID: id, Name: "Group " + id, Nodes: []string{"1", "2"}, Interval: 30})
+		db.Exec("INSERT INTO rules VALUES(?,?,?,?,?,?)", i, i, id, "domain", "domain:g"+id+".test", "group:"+id)
+	}
+	saveGroups(groups)
+	c, e := buildConfig()
+	if e != nil {
+		t.Fatal(e)
+	}
+	bals := c["routing"].(map[string]any)["balancers"].([]any)
+	if len(bals) != 10 {
+		t.Fatal("groups missing")
+	}
+	seen := map[string]bool{}
+	for _, b := range bals {
+		tag := b.(map[string]any)["selector"].([]string)[0]
+		if seen[tag] {
+			t.Fatal("groups share selector")
+		}
+		seen[tag] = true
+	}
+	if e = deleteBalance("10"); e == nil {
+		t.Fatal("rule-bound group deleted")
 	}
 }

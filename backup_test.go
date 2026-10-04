@@ -99,3 +99,33 @@ func TestBackupHTTPUpload(t *testing.T) {
 		t.Fatal("foreign origin accepted")
 	}
 }
+
+func TestGroupBackupAndMissingGroupRollback(t *testing.T) {
+	backupDB(t)
+	db.Exec("INSERT INTO nodes SELECT 4,source_id,uri,name,host,port,transport,security FROM nodes WHERE id=3")
+	saveGroups([]BalanceGroup{{ID: "1", Name: "Example", Nodes: []string{"3", "4"}, Interval: 30}})
+	saveSetting("default_route", "group:1")
+	db.Exec("UPDATE rules SET target='group:1'")
+	before, e := exportBackup()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = restoreBackup(before); e != nil {
+		t.Fatal(e)
+	}
+	saveSetting("default_route", "group:2")
+	bad, _ := exportBackup()
+	if e = restoreBackup(before); e != nil {
+		t.Fatal(e)
+	}
+	if e = restoreBackup(bad); e == nil {
+		t.Fatal("missing group accepted")
+	}
+	after, _ := exportBackup()
+	var a, b panelBackup
+	json.Unmarshal(before, &a)
+	json.Unmarshal(after, &b)
+	if string(a.Data) != string(b.Data) {
+		t.Fatal("group restore damaged data")
+	}
+}

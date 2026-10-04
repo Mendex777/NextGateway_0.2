@@ -63,7 +63,7 @@ func saveSetting(k, v string) error {
 }
 func allNodes() []Node {
 	members := map[string]bool{}
-	for _, id := range balanceSettings().Nodes {
+	for _, id := range groupNodeIDs() {
 		members[id] = true
 	}
 	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id ORDER BY name,n.id")
@@ -214,7 +214,7 @@ func buildConfig() (map[string]any, error) {
 	}
 	mode := setting("default_route")
 	rules := allRules()
-	needProxy := mode == "proxy" || setting("dns_mode") == "proxy" || balanceSettings().Enabled
+	needProxy := mode == "proxy" || setting("dns_mode") == "proxy"
 	for _, r := range rules {
 		if r.Disabled {
 			continue
@@ -244,7 +244,7 @@ func buildConfig() (map[string]any, error) {
 	if selectedHost != "" && net.ParseIP(selectedHost) == nil {
 		bootstrapHosts = append(bootstrapHosts, "full:"+selectedHost)
 	}
-	for _, r := range rules {
+	for _, r := range append(rules, Rule{Target: mode}) {
 		if r.Disabled || !strings.HasPrefix(r.Target, "node:") {
 			continue
 		}
@@ -272,7 +272,7 @@ func buildConfig() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	routing := []any{map[string]any{"type": "field", "inboundTag": []string{"dns-in"}, "outboundTag": "dns-out"}, map[string]any{"type": "field", "inboundTag": []string{"dns-bootstrap"}, "outboundTag": "direct"}, map[string]any{"type": "field", "inboundTag": []string{"dns-upstream"}, "outboundTag": dnsDefaultTarget(mode)}, map[string]any{"type": "field", "ip": []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}, "outboundTag": "direct"}}
+	routing := []any{map[string]any{"type": "field", "inboundTag": []string{"dns-in"}, "outboundTag": "dns-out"}, map[string]any{"type": "field", "inboundTag": []string{"dns-bootstrap"}, "outboundTag": "direct"}, map[string]any{"type": "field", "inboundTag": []string{"dns-upstream"}, "outboundTag": targetTag(dnsDefaultTarget(mode))}, map[string]any{"type": "field", "ip": []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}, "outboundTag": "direct"}}
 	routing = append(routing, dnsRoutes...)
 	for _, r := range rules {
 		if r.Disabled {
@@ -291,15 +291,13 @@ func buildConfig() (map[string]any, error) {
 		}
 		routing = append(routing, entry)
 	}
-	routing = append(routing, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": mode})
+	routing = append(routing, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": targetTag(mode)})
 	config := map[string]any{"log": map[string]any{"loglevel": "warning"}, "dns": map[string]any{"queryStrategy": "UseIPv4", "disableFallbackIfMatch": true, "servers": servers}, "outbounds": out, "routing": map[string]any{"domainStrategy": "AsIs", "rules": routing}, "inbounds": []any{
 		map[string]any{"tag": "tproxy-in", "listen": "0.0.0.0", "port": 7895, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "followRedirect": true}, "streamSettings": map[string]any{"sockopt": map[string]any{"tproxy": "tproxy"}}, "sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true}},
 		map[string]any{"tag": "dns-in", "listen": "0.0.0.0", "port": 1053, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "address": dns, "port": 53}},
 		map[string]any{"tag": "test-socks", "listen": "127.0.0.1", "port": 1080, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": true}}}}
-	if b := balanceSettings(); b.Enabled {
-		if e := addBalance(config, b); e != nil {
-			return nil, e
-		}
+	if e := addGroups(config); e != nil {
+		return nil, e
 	}
 	return config, nil
 }
@@ -421,9 +419,11 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "start", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
 		e = enqueue(r.FormValue("action"), nil)
 		msg = "Задание поставлено в очередь"
+	case "balance-delete":
+		e = deleteBalance(r.FormValue("group_id"))
 	case "balance-settings":
 		e = saveBalance(r)
-		msg = "Настройки автовыбора сохранены; примените конфигурацию один раз. Дальнейшие переключения выполняются без перезапуска Xray"
+		msg = "Группа сохранена. Выберите её выходом нужных маршрутов и примените конфигурацию"
 	case "network-save":
 		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router")})
 		msg = "Параметры сети сохранены; примените выход ВМ и конфигурацию шлюза"

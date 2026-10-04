@@ -57,7 +57,7 @@ def validate(config):
         if tag not in expected or tag in seen or tuple(inbound.get(k) for k in ('listen','port','protocol')) != expected[tag]:
             raise ValueError('Unexpected inbound')
         seen.add(tag)
-    if len(config['outbounds']) > 128:
+    if len(config['outbounds']) > 256:
         raise ValueError('Unexpected outbound count')
     for outbound in config['outbounds']:
         if outbound.get('protocol') not in ('vless','hysteria','freedom','blackhole','dns'):
@@ -71,11 +71,21 @@ def validate(config):
             raise ValueError('Unexpected observatory settings')
         interval=obs.get('probeInterval','')
         if not isinstance(interval,str) or not re.fullmatch(r'[0-9]{2,3}s',interval) or not 10<=int(interval[:-1])<=600:raise ValueError('Unexpected probe interval')
-        expected_balance=[{'tag':'auto-vpn','selector':['auto-vpn-'],'fallbackTag':'block','strategy':{'type':'leastPing'}}]
-        if config['routing'].get('balancers')!=expected_balance:raise ValueError('VPN fallback must block traffic')
-        members=[o for o in config['outbounds'] if str(o.get('tag','')).startswith('auto-vpn-')]
-        if not 2<=len(members)<=8 or len({o['tag'] for o in members})!=len(members):raise ValueError('Unexpected balance group size')
-        if any(not re.fullmatch(r'auto-vpn-[1-9][0-9]*-',o['tag']) or o.get('protocol') not in ('vless','hysteria') for o in members):raise ValueError('Unexpected balance member')
+        balancers=config['routing'].get('balancers',[])
+        if not isinstance(balancers,list) or not 1<=len(balancers)<=16:raise ValueError('Unexpected group count')
+        seen=set(); member_tags=set()
+        for bal in balancers:
+            tag=bal.get('tag','')
+            if not re.fullmatch(r'group-[1-9][0-9]*',tag) or tag in seen:raise ValueError('Unexpected group tag')
+            seen.add(tag); prefix='auto-vpn-'+tag[6:]+'-'
+            expected={'tag':tag,'selector':[prefix],'fallbackTag':'block','strategy':{'type':'leastPing'}}
+            if bal!=expected:raise ValueError('VPN fallback must block traffic')
+            members=[o for o in config['outbounds'] if str(o.get('tag','')).startswith(prefix)]
+            if not 2<=len(members)<=8:raise ValueError('Unexpected balance group size')
+            for o in members:
+                if not re.fullmatch(re.escape(prefix)+r'[1-9][0-9]*-',o['tag']) or o.get('protocol') not in ('vless','hysteria') or o['tag'] in member_tags:raise ValueError('Unexpected balance member')
+                member_tags.add(o['tag'])
+        if {o['tag'] for o in config['outbounds'] if str(o.get('tag','')).startswith('auto-vpn-')}!=member_tags:raise ValueError('Unassigned balance member')
     # No external file reads/writes through core config, even with a forged inbox job.
     forbidden = {'access','error','certificates','certificateFile','keyFile','file','files','configFile','privateKey','masterKeyLog'}
     def walk(value):

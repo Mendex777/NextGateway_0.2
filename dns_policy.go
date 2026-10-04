@@ -92,7 +92,7 @@ func dnsPolicy(bootstrap, mode string, rules []Rule, hosts []string) ([]any, []a
 		}
 	}
 	raw := direct
-	if dnsDefaultTarget(mode) == "proxy" {
+	if target := dnsDefaultTarget(mode); target == "proxy" || strings.HasPrefix(target, "group:") || strings.HasPrefix(target, "node:") {
 		raw = vpn
 	}
 	add(raw, "dns-upstream", nil)

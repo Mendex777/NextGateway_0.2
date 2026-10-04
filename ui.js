@@ -58,16 +58,5 @@ if (balanceSearch) {
  document.querySelectorAll('.balance-entry input').forEach(input => input.addEventListener('change',balanceFilter));
  balanceFilter();
 }
-if (document.getElementById('balance-status')) {
- setInterval(async () => {
-  try {
-   const r=await fetch('/balance-status',{cache:'no-store'});if(!r.ok)return;
-   const s=await r.json();document.getElementById('balance-status').textContent=s.Message;
-   document.querySelectorAll('.balance-row').forEach(row => {
-    const active=row.dataset.balanceTag===s.Tag;
-    row.classList.toggle('selected',active);
-    row.querySelector('.balance-active').textContent=active?'Для новых соединений':'—';
-   });
-  } catch (_) {}
- },5000);
-}
+document.querySelectorAll('.group-status').forEach(el=>{const poll=async()=>{try{const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(r.ok)el.textContent=(await r.json()).Message;}catch{}};poll();setInterval(poll,10000);});
+const groupEdit=document.getElementById('group-edit');if(groupEdit){const members=groupEdit.dataset.members.trim().split(/\s+/);groupEdit.querySelectorAll("input[name=balance_node]").forEach(el=>el.checked=members.includes(el.value));balanceFilter();groupEdit.showModal();}
