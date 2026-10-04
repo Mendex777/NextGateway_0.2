@@ -26,11 +26,13 @@ type Rule struct {
 	Name, Kind, Value, Target string
 }
 type Runtime struct {
+	AppliedNetwork                              GatewayNetwork
 	State, Message, Updated, Action, ConfigHash string
 	Gateway                                     bool
 	Network                                     string
 }
 type Job struct {
+	Network    GatewayNetwork `json:"network"`
 	ID, Action string
 	Config     map[string]any `json:"config,omitempty"`
 	Gateway    bool           `json:"gateway"`
@@ -293,7 +295,13 @@ func buildConfig() (map[string]any, error) {
 func enqueue(action string, config map[string]any) error {
 	jobLock.Lock()
 	defer jobLock.Unlock()
-	j := Job{ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
+	j := Job{Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
+	if action == "network" || (action == "apply" && j.Gateway) {
+		if e := saveNetwork(j.Network); e != nil {
+			return e
+		}
+	}
+
 	if config != nil {
 		b, _ := json.Marshal(config)
 		h := sha256.Sum256(b)
@@ -402,9 +410,19 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "start", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
 		e = enqueue(r.FormValue("action"), nil)
 		msg = "Задание поставлено в очередь"
+	case "network-save":
+		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router")})
+		msg = "Параметры сети сохранены; примените выход ВМ и конфигурацию шлюза"
+	case "network-detect":
+		var n GatewayNetwork
+		n, e = detectNetwork()
+		if e == nil {
+			e = saveNetwork(n)
+		}
+		msg = "Параметры определены по текущей сети; проверьте адрес роутера"
 	case "network":
 		e = enqueue("network", nil)
-		msg = "Выход ВМ через 192.168.1.1 запрошен; DHCP-адрес сохраняется"
+		msg = "Изменение выхода ВМ запрошено; DHCP-адрес сохраняется"
 	case "gateway-settings":
 		dns := r.FormValue("dns")
 		if !validIPv4(dns) {

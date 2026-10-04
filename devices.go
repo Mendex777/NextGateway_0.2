@@ -25,11 +25,21 @@ type Device struct {
 
 var deviceLock sync.Mutex
 
-func deviceIP(ip string) bool {
+func deviceIP(ip string) bool { return validDeviceIP(ip, gatewayNetwork()) }
+func validDeviceIP(ip string, n GatewayNetwork) bool {
 	v := net.ParseIP(ip)
-	return v != nil && v.To4() != nil && strings.HasPrefix(ip, "192.168.1.") && ip != "192.168.1.0" && ip != "192.168.1.255" && ip != "192.168.1.84" && ip != "192.168.1.1" && v.String() == ip
+	_, subnet, e := net.ParseCIDR(n.CIDR)
+	if e != nil || v == nil || v.To4() == nil || !subnet.Contains(v) || v.String() != ip || ip == n.Address || ip == n.Router || v.Equal(subnet.IP) {
+		return false
+	}
+	broadcast := append(net.IP(nil), subnet.IP.To4()...)
+	for i := range broadcast {
+		broadcast[i] |= ^subnet.Mask[i]
+	}
+	return !v.Equal(broadcast)
 }
 func devices() []Device {
+	n := gatewayNetwork()
 	rows, e := db.Query("SELECT value FROM settings WHERE key LIKE 'device:%'")
 	if e != nil {
 		return nil
@@ -38,7 +48,7 @@ func devices() []Device {
 	for rows.Next() {
 		var raw string
 		var d Device
-		if rows.Scan(&raw) == nil && json.Unmarshal([]byte(raw), &d) == nil && deviceIP(d.IP) {
+		if rows.Scan(&raw) == nil && json.Unmarshal([]byte(raw), &d) == nil && validDeviceIP(d.IP, n) {
 			out = append(out, d)
 		}
 	}
@@ -90,7 +100,7 @@ func discoverDevices() error {
 		defer deviceLock.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		raw, e := exec.CommandContext(ctx, "ip", "-j", "-4", "neigh", "show", "dev", "ens18").Output()
+		raw, e := exec.CommandContext(ctx, "ip", "-j", "-4", "neigh", "show", "dev", gatewayNetwork().Interface).Output()
 		if e != nil {
 			saveSetting("device_discovery", "Не удалось прочитать таблицу соседей")
 			return
@@ -139,7 +149,7 @@ func lookupDeviceName(parent context.Context, ip string) string {
 	ctx, cancel := context.WithTimeout(parent, 1200*time.Millisecond)
 	defer cancel()
 	resolver := net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "udp", "192.168.1.1:53")
+		return (&net.Dialer{}).DialContext(ctx, "udp", net.JoinHostPort(gatewayNetwork().Router, "53"))
 	}}
 	if names, e := resolver.LookupAddr(ctx, ip); e == nil && len(names) > 0 {
 		return strings.TrimSuffix(names[0], ".")
@@ -185,7 +195,7 @@ func deviceVendor(mac string) string {
 func saveDevice(r *http.Request) error {
 	ip := strings.TrimSpace(r.FormValue("ip"))
 	if !deviceIP(ip) {
-		return fmt.Errorf("Нужен адрес устройства из 192.168.1.0/24")
+		return fmt.Errorf("Нужен адрес устройства из настроенной подсети LAN")
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(name) > 200 {

@@ -52,6 +52,8 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	Network, DetectedNetwork                                              GatewayNetwork
+	NetworkError                                                          string
 	OperationAction, OperationSince                                       string
 	PanelVersion, PanelCommit                                             string
 	PanelUpdate                                                           PanelUpdateStatus
@@ -389,6 +391,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
+	p.Network = gatewayNetwork()
+	if detected, e := detectNetwork(); e == nil {
+		p.DetectedNetwork = detected
+	} else {
+		p.NetworkError = e.Error()
+	}
 	p.OperationAction, p.OperationSince = r.URL.Query().Get("operation"), r.URL.Query().Get("since")
 	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit
 	p.PanelUpdate = readPanelUpdate()
@@ -417,7 +425,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			b, _ := json.Marshal(c)
 			hash := sha256.Sum256(b)
-			p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || (p.Gateway == "1") != p.Runtime.Gateway
+			p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
 		}
 		p.Version = command("xray", "version")
 		p.Service = command("systemctl", "is-active", "xray")

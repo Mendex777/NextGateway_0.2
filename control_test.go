@@ -19,6 +19,9 @@ func configDatabase(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if e := saveNetwork(GatewayNetwork{"ens18", "192.168.1.84", "192.168.1.0/24", "192.168.1.1"}); e != nil {
+		t.Fatal(e)
+	}
 }
 func TestProxyRequiresSelectedNode(t *testing.T) {
 	configDatabase(t)

@@ -73,13 +73,51 @@ def validate(config):
             for child in value: walk(child)
     walk(config)
 
-def nft_text():
-    return '''table inet ngpanel {
+def validate_network(n, live=False):
+    if not isinstance(n,dict) or set(n)!={'interface','address','cidr','router'}:
+        raise ValueError('Укажите параметры сети на странице DNS и шлюз')
+    iface=n['interface']
+    if not isinstance(iface,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}',iface) or iface=='lo':
+        raise ValueError('Некорректный интерфейс LAN')
+    subnet=ipaddress.IPv4Network(n['cidr'],strict=True)
+    address=ipaddress.IPv4Address(n['address']);router=ipaddress.IPv4Address(n['router'])
+    if not 1<=subnet.prefixlen<=30 or address==router or any(ip not in subnet or ip in (subnet.network_address,subnet.broadcast_address) for ip in (address,router)):
+        raise ValueError('Некорректные адреса LAN или роутера')
+    if live:
+        links=json.loads(run(['ip','-j','-4','addr','show','dev',iface]).stdout)
+        if not any(a.get('local')==str(address) and a.get('prefixlen')==subnet.prefixlen for l in links for a in l.get('addr_info',[])):
+            raise ValueError('Выбранный адрес и подсеть отсутствуют на интерфейсе ВМ; определите сеть заново')
+    return n
+
+def verify_default(n):
+    routes=json.loads(run(['ip','-j','-4','route','show','default']).stdout)
+    routes=sorted((r for r in routes if r.get('gateway')),key=lambda r:r.get('metric',0))
+    if not routes or routes[0].get('gateway')!=n['router'] or routes[0].get('dev')!=n['interface']:
+        raise ValueError('Выход ВМ не соответствует выбранному роутеру; примените выход и подтвердите доступность панели')
+
+def applied_network(meta):
+    n=meta.get('network')
+    if n: return validate_network(n,True)
+    # Migration of older installations: use the actual interface and route.
+    routes=json.loads(run(['ip','-j','-4','route','show','default']).stdout)
+    for r in sorted(routes,key=lambda r:r.get('metric',0)):
+        if not r.get('gateway'):continue
+        links=json.loads(run(['ip','-j','-4','addr','show','dev',r['dev']]).stdout)
+        for l in links:
+            for a in l.get('addr_info',[]):
+                subnet=ipaddress.IPv4Network(str(a['local'])+'/'+str(a['prefixlen']),strict=False)
+                if ipaddress.IPv4Address(r['gateway']) in subnet:
+                    return validate_network(dict(interface=r['dev'],address=a['local'],cidr=str(subnet),router=r['gateway']),True)
+    raise ValueError('Не удалось определить применённую сеть')
+
+def nft_text(n):
+    n=validate_network(n)
+    text = '''table inet ngpanel {
  chain transparent_in {
   type filter hook prerouting priority mangle; policy accept;
-  iifname != "ens18" return
+  iifname != "__INTERFACE__" return
   meta nfproto != ipv4 return
-  ip saddr != 192.168.1.0/24 return
+  ip saddr != __CIDR__ return
   meta mark 666 return
   meta l4proto { tcp, udp } th dport 53 return
   fib daddr type local return
@@ -89,22 +127,24 @@ def nft_text():
  }
  chain dns {
   type nat hook prerouting priority dstnat; policy accept;
-  iifname "ens18" ip saddr 192.168.1.0/24 meta l4proto { tcp, udp } th dport 53 redirect to :1053
+  iifname "__INTERFACE__" ip saddr __CIDR__ meta l4proto { tcp, udp } th dport 53 redirect to :1053
  }
  chain local_input {
   type filter hook input priority filter; policy accept;
-  iifname "ens18" ip saddr != 192.168.1.0/24 meta l4proto { tcp, udp } th dport { 1053, 7895 } reject
-  iifname "ens18" ip daddr 192.168.1.84 meta l4proto { tcp, udp } th dport 7895 reject
+  iifname "__INTERFACE__" ip saddr != __CIDR__ meta l4proto { tcp, udp } th dport { 1053, 7895 } reject
+  iifname "__INTERFACE__" ip daddr __ADDRESS__ meta l4proto { tcp, udp } th dport 7895 reject
  }
  chain forward_guard {
   type filter hook forward priority filter; policy accept;
-  iifname != "ens18" return
+  iifname != "__INTERFACE__" return
   meta nfproto ipv6 reject
-  ip saddr != 192.168.1.0/24 return
+  ip saddr != __CIDR__ return
   ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 } return
   meta l4proto { tcp, udp } reject
  }
 }'''
+
+    return text.replace("__INTERFACE__",n["interface"]).replace("__CIDR__",n["cidr"]).replace("__ADDRESS__",n["address"])
 
 def disable_gateway():
     if run(['nft','list','table','inet','ngpanel'],check=False).returncode == 0:
@@ -112,7 +152,8 @@ def disable_gateway():
     run(['ip','-4','rule','del','priority','11000','fwmark','1','lookup','100'],check=False)
     run(['ip','-4','route','del','local','0.0.0.0/0','dev','lo','table','100'],check=False)
 
-def enable_gateway():
+def enable_gateway(n):
+    n=validate_network(n,True)
     # Preserve our policy rule across networkd restarts and DHCP reconfiguration.
     networkd_dir=pathlib.Path('/etc/systemd/networkd.conf.d')
     networkd_dir.mkdir(mode=0o755,exist_ok=True)
@@ -130,13 +171,14 @@ def enable_gateway():
     routes = json.loads(route_result.stdout or '[]') if route_result.returncode == 0 else []
     if any(r.get('type') != 'local' or r.get('dst') != 'default' or r.get('dev') != 'lo' for r in routes):
         raise ValueError('Policy routing table 100 is occupied')
-    text = nft_text()
+    text = nft_text(n)
     prefix = 'delete table inet ngpanel\n' if run(['nft','list','table','inet','ngpanel'],check=False).returncode == 0 else ''
     run(['nft','-c','-f','-'],input=prefix + text)
     if not any(r.get('priority') == 11000 for r in rules): run(MARK_RULE)
     run(['ip','-4','route','replace','local','0.0.0.0/0','dev','lo','table','100'])
     run(['nft','-f','-'],input=prefix + text)
-    run(['sysctl','-w','net.ipv4.ip_forward=1','net.ipv4.conf.all.rp_filter=2','net.ipv4.conf.ens18.rp_filter=2'])
+    run(['sysctl','-w','net.ipv4.ip_forward=1','net.ipv4.conf.all.rp_filter=2'])
+    pathlib.Path('/proc/sys/net/ipv4/conf',n['interface'],'rp_filter').write_text('2')
     atomic(NFT,text)
 
 def restore(config_bytes, meta, was_active):
@@ -149,11 +191,11 @@ def restore(config_bytes, meta, was_active):
     else:
         run(['systemctl','stop','xray'],check=False)
     if meta.get('gateway'):
-        enable_gateway()
+        enable_gateway(applied_network(meta))
     else:
         disable_gateway()
 
-def apply(config, gateway, config_hash):
+def apply(config, gateway, config_hash, n):
     validate(config)
     gid = pwd.getpwnam('ngxray').pw_gid
     candidate = pathlib.Path('/etc/ngpanel/candidate.json')
@@ -181,10 +223,9 @@ def apply(config, gateway, config_hash):
     if gateway:
         if pathlib.Path('/etc/ngpanel/network-backup.json').exists():
             raise ValueError('Подтвердите доступность панели после изменения сети перед включением шлюза')
-        default = run(['ip','-4','route','show','default']).stdout
-        if 'via 192.168.1.1 ' not in default:
-            raise ValueError('Сначала настройте выход ВМ через роутер 192.168.1.1')
-        text=nft_text()
+        n=validate_network(n,True)
+        verify_default(n)
+        text=nft_text(n)
         prefix='delete table inet ngpanel\n' if run(['nft','list','table','inet','ngpanel'],check=False).returncode==0 else ''
         run(['nft','-c','-f','-'],input=prefix+text)
     previous = CONF.read_text() if CONF.exists() else None
@@ -195,7 +236,7 @@ def apply(config, gateway, config_hash):
         run(['systemctl','restart','xray'])
         time.sleep(1)
         if not active(): raise ValueError('Xray did not remain running')
-        if gateway: enable_gateway()
+        if gateway: enable_gateway(n)
         else: disable_gateway()
     except Exception:
         restore(previous,old_meta,was_active)
@@ -203,21 +244,22 @@ def apply(config, gateway, config_hash):
     if previous is not None:
         atomic(BACKUP,previous,0o640,gid)
         atomic(PREVIOUS_META,json.dumps(old_meta),0o600)
-    meta={'gateway':gateway,'hash':config_hash}
+    meta={'gateway':gateway,'hash':config_hash,'network':n if gateway else {}}
     atomic(META,json.dumps(meta),0o600)
     run(['systemctl','enable','xray','ngpanel-gateway'],check=True)
     return 'Конфигурация применена. Xray запущен; шлюз ' + ('включён' if gateway else 'выключен')
 
-def network():
+def network(n):
+    n=validate_network(n,True)
     target=pathlib.Path('/etc/netplan/90-ngpanel.yaml')
     backup=pathlib.Path('/etc/ngpanel/network-backup.json')
     if backup.exists():
         raise ValueError('Сначала подтвердите или дождитесь отката предыдущего изменения сети')
-    atomic(backup,json.dumps({'content':target.read_text() if target.exists() else None}),0o600)
+    atomic(backup,json.dumps({'content':target.read_text() if target.exists() else None,'network':n}),0o600)
     config='''network:
   version: 2
   ethernets:
-    ens18:
+    __INTERFACE__:
       dhcp4: true
       dhcp6: false
       accept-ra: false
@@ -227,10 +269,11 @@ def network():
         use-dns: false
       routes:
         - to: default
-          via: 192.168.1.1
+          via: __ROUTER__
       nameservers:
         addresses: [1.1.1.1, 8.8.8.8]
 '''
+    config=config.replace("__INTERFACE__",json.dumps(n["interface"])).replace("__ROUTER__",n["router"])
     atomic(target,config,0o600)
     try:
         run(['netplan','generate'])
@@ -239,7 +282,7 @@ def network():
     except Exception:
         network_revert()
         raise
-    return 'Выход через 192.168.1.1 применён временно. Подтвердите доступность панели в течение 120 секунд, иначе сеть откатится.'
+    return 'Выход через выбранный роутер применён временно. Подтвердите доступность панели в течение 120 секунд, иначе сеть откатится.'
 
 def network_revert():
     backup=pathlib.Path('/etc/ngpanel/network-backup.json')
@@ -258,7 +301,7 @@ if __name__ == '__main__':
     if len(sys.argv)>1:
         if sys.argv[1]=='network-revert': network_revert()
         elif sys.argv[1]=='gateway-restore':
-            if load(META).get('gateway'): enable_gateway()
+            if load(META).get('gateway'): enable_gateway(applied_network(load(META)))
         else: raise ValueError('Unknown fixed operation')
         sys.exit(0)
     with open('/run/ngpanel-control.lock','w') as lock:
@@ -277,7 +320,7 @@ if __name__ == '__main__':
             runtime.update(State='running',Action=action,Message='Выполняется задание')
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             message=''
-            if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''))
+            if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''),job.get('network'))
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)
                 run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils','ieee-data'],timeout=150)
@@ -299,9 +342,13 @@ if __name__ == '__main__':
                 restore(BACKUP.read_text(),old_meta,True)
                 atomic(META,json.dumps(old_meta),0o600)
                 message='Предыдущая конфигурация восстановлена'
-            elif action=='network': message=network();runtime['Network']='pending'
+            elif action=='network': message=network(job.get('network'));runtime['Network']='pending'
             elif action=='network-confirm':
                 if not pathlib.Path('/etc/ngpanel/network-backup.json').exists():raise ValueError('Нет ожидающего изменения сети')
+                pending=load(pathlib.Path('/etc/ngpanel/network-backup.json'))
+                if pending.get('network'):
+                    validate_network(pending['network'],True)
+                    verify_default(pending['network'])
                 run(['systemctl','stop','ngpanel-network-revert.timer'],check=False)
                 pathlib.Path('/etc/ngpanel/network-backup.json').unlink(missing_ok=True)
                 runtime['Network']='direct';message='Выход ВМ через роутер подтверждён'
@@ -316,6 +363,7 @@ if __name__ == '__main__':
             runtime.update(State='error',Message=str(exc) if isinstance(exc,ValueError) else 'Системное задание завершилось ошибкой; рабочие настройки сохранены, подробности в журнале ngpanel-control')
         finally:
             meta=load(META)
+            runtime['AppliedNetwork']=meta.get('network',{})
             runtime.update(Action=action,Gateway=bool(meta.get('gateway')),ConfigHash=meta.get('hash',''),Updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             request.unlink(missing_ok=True)
