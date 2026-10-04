@@ -281,7 +281,7 @@ if __name__ == '__main__':
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)
                 run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils','ieee-data'],timeout=150)
-                message='Компоненты шлюза установлены; перехват ещё не включён'
+                message='Компоненты шлюза установлены'
             elif action=='geodata':
                 result=run(['/usr/bin/python3','/opt/ngpanel/update-geodata.py'],check=False,timeout=270)
                 if result.returncode:raise ValueError('Обновление geo-баз не завершено. '+(result.stderr.splitlines()[-1] if result.stderr else 'Подробности в журнале')[:500])
