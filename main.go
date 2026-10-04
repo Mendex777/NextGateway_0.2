@@ -44,6 +44,7 @@ type Source struct {
 	Count                                                             int
 }
 type Node struct {
+	BalanceMember                                        bool
 	Compatibility, Encryption, SNI, Flow, Path, Protocol string
 	SourceID                                             int
 	Probe                                                ProbeResult
@@ -52,6 +53,8 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	Balance                                                               BalanceSettings
+	BalanceStatus                                                         BalanceStatus
 	Network, DetectedNetwork                                              GatewayNetwork
 	NetworkError                                                          string
 	OperationAction, OperationSince                                       string
@@ -299,6 +302,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "ui.js")
 		return
 	}
+	if r.URL.Path == "/balance-status" && r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(readBalanceStatus())
+		return
+	}
 	if r.URL.Path == "/probe-status" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(probeStatus())
@@ -363,6 +371,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				}
 				msg = "Подписка импортирована; Xray не изменён"
 			case "delete":
+				if sourceProtected(r.FormValue("id")) {
+					e = fmt.Errorf("Подписка содержит выбранный VPN или участника группы/правила; сначала измените настройки")
+					break
+				}
 				res, err := db.Exec("DELETE FROM sources WHERE id=? AND NOT EXISTS (SELECT 1 FROM nodes n JOIN rules r ON r.target='node:' || n.id WHERE n.source_id=sources.id)", r.FormValue("id"))
 				e = err
 				if e == nil {
@@ -396,6 +408,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		p.DetectedNetwork = detected
 	} else {
 		p.NetworkError = e.Error()
+	}
+	p.Balance = balanceSettings()
+	if p.Tab == "subscriptions" {
+		p.BalanceStatus = readBalanceStatus()
 	}
 	p.OperationAction, p.OperationSince = r.URL.Query().Get("operation"), r.URL.Query().Get("since")
 	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit

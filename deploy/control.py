@@ -44,7 +44,7 @@ def active():
     return run(['systemctl', 'is-active', '--quiet', 'xray'], check=False).returncode == 0
 
 def validate(config):
-    if not isinstance(config, dict) or set(config) != {'log','dns','inbounds','outbounds','routing'}:
+    if not isinstance(config, dict) or not {'log','dns','inbounds','outbounds','routing'}<=set(config) or set(config)-{'log','dns','inbounds','outbounds','routing','observatory','api'}:
         raise ValueError('Unexpected configuration schema')
     if config['log'] != {'loglevel':'warning'}:
         raise ValueError('Only journal logging is allowed')
@@ -57,11 +57,25 @@ def validate(config):
         if tag not in expected or tag in seen or tuple(inbound.get(k) for k in ('listen','port','protocol')) != expected[tag]:
             raise ValueError('Unexpected inbound')
         seen.add(tag)
-    if len(config['outbounds']) > 4:
+    if len(config['outbounds']) > 128:
         raise ValueError('Unexpected outbound count')
     for outbound in config['outbounds']:
-        if outbound.get('protocol') not in ('vless','freedom','blackhole','dns'):
+        if outbound.get('protocol') not in ('vless','hysteria','freedom','blackhole','dns'):
             raise ValueError('Unexpected outbound protocol')
+    has_balance='observatory' in config or 'api' in config or bool(config['routing'].get('balancers'))
+    if has_balance:
+        api={'tag':'balance-api','listen':'127.0.0.1:10085','services':['RoutingService']}
+        if config.get('api')!=api:raise ValueError('Only local balance API is allowed')
+        obs=config.get('observatory',{})
+        if not isinstance(obs,dict) or set(obs)!={'subjectSelector','probeUrl','probeInterval','enableConcurrency'} or obs.get('subjectSelector')!=['auto-vpn-'] or obs.get('probeUrl')!='https://www.google.com/generate_204' or obs.get('enableConcurrency') is not True:
+            raise ValueError('Unexpected observatory settings')
+        interval=obs.get('probeInterval','')
+        if not isinstance(interval,str) or not re.fullmatch(r'[0-9]{2,3}s',interval) or not 10<=int(interval[:-1])<=600:raise ValueError('Unexpected probe interval')
+        expected_balance=[{'tag':'auto-vpn','selector':['auto-vpn-'],'fallbackTag':'block','strategy':{'type':'leastPing'}}]
+        if config['routing'].get('balancers')!=expected_balance:raise ValueError('VPN fallback must block traffic')
+        members=[o for o in config['outbounds'] if str(o.get('tag','')).startswith('auto-vpn-')]
+        if not 2<=len(members)<=8 or len({o['tag'] for o in members})!=len(members):raise ValueError('Unexpected balance group size')
+        if any(not re.fullmatch(r'auto-vpn-[1-9][0-9]*-',o['tag']) or o.get('protocol') not in ('vless','hysteria') for o in members):raise ValueError('Unexpected balance member')
     # No external file reads/writes through core config, even with a forged inbox job.
     forbidden = {'access','error','certificates','certificateFile','keyFile','file','files','configFile','privateKey','masterKeyLog'}
     def walk(value):
@@ -263,7 +277,7 @@ def apply(config, gateway, config_hash, n):
     if previous is not None:
         atomic(BACKUP,previous,0o640,gid)
         atomic(PREVIOUS_META,json.dumps(old_meta),0o600)
-    meta={'gateway':gateway,'hash':config_hash,'network':n if gateway else {}}
+    meta={'gateway':gateway,'hash':config_hash,'network':n if gateway else {},'balance':'observatory' in config}
     atomic(META,json.dumps(meta),0o600)
     run(['systemctl','enable','xray','ngpanel-gateway'],check=True)
     return 'Конфигурация применена. Xray запущен; шлюз ' + ('включён' if gateway else 'выключен')
@@ -409,6 +423,7 @@ if __name__ == '__main__':
         finally:
             meta=load(META)
             runtime['AppliedNetwork']=meta.get('network',{})
+            runtime['Balance']=bool(meta.get('balance'))
             runtime.update(Action=action,Gateway=bool(meta.get('gateway')),ConfigHash=meta.get('hash',''),Updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             request.unlink(missing_ok=True)

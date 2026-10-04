@@ -188,6 +188,29 @@ func restoreBackup(raw []byte) error {
 			return fmt.Errorf("В бекапе отсутствует выбранное подключение")
 		}
 	}
+	var balanceRaw string
+	tx.QueryRow("SELECT value FROM settings WHERE key='balance_settings'").Scan(&balanceRaw)
+	if balanceRaw != "" {
+		var b BalanceSettings
+		if json.Unmarshal([]byte(balanceRaw), &b) != nil {
+			return fmt.Errorf("Некорректная группа автовыбора в бекапе")
+		}
+		ids := b.Nodes
+		if b.Enabled {
+			var e error
+			ids, e = balanceMembers(b, selected)
+			if e != nil {
+				return e
+			}
+		}
+		for _, id := range ids {
+			var count int
+			tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", id).Scan(&count)
+			if count != 1 {
+				return fmt.Errorf("В бекапе отсутствует участник группы автовыбора")
+			}
+		}
+	}
 	rows, e := tx.Query("PRAGMA foreign_key_check")
 	if e != nil {
 		return e

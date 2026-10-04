@@ -56,6 +56,9 @@ func validateRuleNode(target string) error {
 }
 func referencedNodes() map[string]bool {
 	out := map[string]bool{}
+	for _, id := range balanceSettings().Nodes {
+		out[id] = true
+	}
 	rows, e := db.Query("SELECT target FROM rules WHERE target LIKE 'node:%'")
 	if e != nil {
 		return out
@@ -68,4 +71,16 @@ func referencedNodes() map[string]bool {
 		}
 	}
 	return out
+}
+
+func sourceProtected(source string) bool {
+	refs := referencedNodes()
+	refs[setting("selected_node")] = true
+	for id := range refs {
+		var parent string
+		if db.QueryRow("SELECT source_id FROM nodes WHERE id=?", id).Scan(&parent) == nil && parent == source {
+			return true
+		}
+	}
+	return false
 }

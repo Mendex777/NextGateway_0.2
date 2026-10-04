@@ -26,6 +26,7 @@ type Rule struct {
 	Name, Kind, Value, Target string
 }
 type Runtime struct {
+	Balance                                     bool
 	AppliedNetwork                              GatewayNetwork
 	State, Message, Updated, Action, ConfigHash string
 	Gateway                                     bool
@@ -61,6 +62,10 @@ func saveSetting(k, v string) error {
 	return e
 }
 func allNodes() []Node {
+	members := map[string]bool{}
+	for _, id := range balanceSettings().Nodes {
+		members[id] = true
+	}
 	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id ORDER BY name,n.id")
 	if e != nil {
 		return nil
@@ -73,6 +78,7 @@ func allNodes() []Node {
 		if rows.Scan(&n.ID, &n.SourceID, &n.Name, &n.Host, &n.Port, &n.Transport, &n.Security, &probe, &raw) == nil {
 			json.Unmarshal([]byte(probe), &n.Probe)
 			fillNodeDetails(&n, raw)
+			n.BalanceMember = members[strconv.Itoa(n.ID)]
 			out = append(out, n)
 		}
 	}
@@ -208,7 +214,7 @@ func buildConfig() (map[string]any, error) {
 	}
 	mode := setting("default_route")
 	rules := allRules()
-	needProxy := mode == "proxy" || setting("dns_mode") == "proxy"
+	needProxy := mode == "proxy" || setting("dns_mode") == "proxy" || balanceSettings().Enabled
 	for _, r := range rules {
 		if r.Disabled {
 			continue
@@ -290,6 +296,11 @@ func buildConfig() (map[string]any, error) {
 		map[string]any{"tag": "tproxy-in", "listen": "0.0.0.0", "port": 7895, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "followRedirect": true}, "streamSettings": map[string]any{"sockopt": map[string]any{"tproxy": "tproxy"}}, "sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true}},
 		map[string]any{"tag": "dns-in", "listen": "0.0.0.0", "port": 1053, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "address": dns, "port": 53}},
 		map[string]any{"tag": "test-socks", "listen": "127.0.0.1", "port": 1080, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": true}}}}
+	if b := balanceSettings(); b.Enabled {
+		if e := addBalance(config, b); e != nil {
+			return nil, e
+		}
+	}
 	return config, nil
 }
 func enqueue(action string, config map[string]any) error {
@@ -410,6 +421,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "start", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
 		e = enqueue(r.FormValue("action"), nil)
 		msg = "Задание поставлено в очередь"
+	case "balance-settings":
+		e = saveBalance(r)
+		msg = "Настройки автовыбора сохранены; примените конфигурацию один раз. Дальнейшие переключения выполняются без перезапуска Xray"
 	case "network-save":
 		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router")})
 		msg = "Параметры сети сохранены; примените выход ВМ и конфигурацию шлюза"
@@ -567,6 +581,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 			tx.Rollback()
 		}
 	case "node-delete":
+		if r.FormValue("id") == setting("selected_node") || referencedNodes()[r.FormValue("id")] {
+			return true, "", fmt.Errorf("Подключение используется выбранным VPN, группой или правилом; сначала измените настройки")
+		}
 		res, err := db.Exec("DELETE FROM nodes WHERE id=? AND NOT EXISTS (SELECT 1 FROM rules WHERE target='node:' || nodes.id)", r.FormValue("id"))
 		e = err
 		if e == nil {
