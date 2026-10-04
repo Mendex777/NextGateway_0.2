@@ -398,6 +398,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
+		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check") {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			if e != nil {
+				w.WriteHeader(http.StatusBadRequest)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"ok": e == nil, "message": msg})
+			return
+		}
 		redirect := "/?tab=" + url.QueryEscape(r.FormValue("tab")) + "&message=" + url.QueryEscape(msg)
 		if e == nil && operationKind(r.FormValue("action")) != "" {
 			redirect += "&operation=" + url.QueryEscape(r.FormValue("action")) + "&since=" + url.QueryEscape(started)

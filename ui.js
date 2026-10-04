@@ -58,11 +58,34 @@ if (balanceSearch) {
  document.querySelectorAll('.balance-entry input').forEach(input => input.addEventListener('change',balanceFilter));
  balanceFilter();
 }
-document.querySelectorAll('.group-status').forEach(el=>{const poll=async()=>{try{const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;const s=await r.json();el.textContent=[s.Message,s.Policy,s.Controller].filter(Boolean).join(' · ');const group=el.closest('details');group.querySelector('.group-current').textContent=s.Name?'· Сейчас: '+s.Name:'· '+s.Message;const samples=new Map((s.Samples||[]).map(n=>[n.NodeID,n]));group.querySelectorAll('[data-group-node]').forEach(row=>{const n=samples.get(row.dataset.groupNode);row.classList.toggle('selected',Boolean(n?.Active));row.querySelector('.group-delay').textContent=n?.Checked&&n.Alive?n.DelayMS+' мс':'—';const stale=n?.Checked&&(Date.now()/1000-n.Checked>Number(el.dataset.interval)*3+15);row.querySelector('.group-node-status').textContent=!n?.Checked?'Не проверен':[(n.Active?'Выбран · ': '')+(stale?'Данные устарели':n.Alive?'Доступен':'Недоступен'),new Date(n.Checked*1000).toLocaleTimeString()].join(' · ');});}catch{el.textContent='Не удалось получить состояние группы';}};poll();setInterval(poll,5000);});
+document.querySelectorAll('.group-status').forEach(el=>{const poll=async()=>{try{const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;const s=await r.json();el.textContent=[s.Message,s.Policy,s.Controller].filter(Boolean).join(' · ');const group=el.closest('details');group.querySelector('.group-current').textContent=s.Name?'· Сейчас: '+s.Name:'· '+s.Message;const samples=new Map((s.Samples||[]).map(n=>[n.NodeID,n]));group.querySelectorAll('[data-group-node]').forEach(row=>{const n=samples.get(row.dataset.groupNode);row.classList.toggle('selected',Boolean(n?.Active));row.querySelector('.group-delay').textContent=n?.Checked&&n.Alive?n.DelayMS+' мс':'—';const stale=n?.Checked&&(Date.now()/1000-n.Checked>Number(el.dataset.interval)*3+15);row.querySelector('.group-node-status').textContent=!n?.Checked?'Не проверен':[(n.Active?'Выбран · ': '')+(stale?'Данные устарели':n.Alive?'Доступен':'Недоступен'),new Date(n.Checked*1000).toLocaleTimeString()].join(' · ');});}catch{el.textContent='Не удалось получить состояние группы';}};el.closest('details').addEventListener('group-updated',poll);poll();setInterval(poll,5000);});
 const policySelector=document.querySelector('select[name=policy]');if(policySelector){const update=()=>document.querySelector('.threshold-fields').hidden=policySelector.value!=='threshold';policySelector.addEventListener('change',update);update();}
 const groupEdit=document.getElementById('group-edit');if(groupEdit){const members=groupEdit.dataset.members.trim().split(/\s+/);groupEdit.querySelectorAll("input[name=balance_node]").forEach(el=>el.checked=members.includes(el.value));balanceFilter();groupEdit.showModal();}
 
 document.querySelectorAll('.group-check-result').forEach(el=>{
  const poll=async()=>{try{const r=await fetch('/group-check-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;const result=await r.json();el.replaceChildren();if(!result.State)return;const text=document.createElement('span');text.textContent=result.Message;el.append(text);if(result.Samples?.length){const list=document.createElement('ul');for(const sample of result.Samples){const row=el.closest('details').querySelector('[data-group-node="'+sample.NodeID+'"]');const item=document.createElement('li');item.textContent=(row?.cells[0].childNodes[0].textContent||sample.NodeID)+': '+(sample.Alive?sample.DelayMS+' мс':'Недоступен');list.append(item);}el.append(list);}}catch{el.textContent='Не удалось получить результат проверки';}};
  poll();setInterval(poll,3000);
+});
+
+// Keep the expanded group and scroll position while applying group actions.
+document.querySelectorAll('.group-status').forEach(status=>{
+ const group=status.closest('details');
+ group.querySelectorAll('form').forEach(form=>form.addEventListener('submit',async event=>{
+  const button=event.submitter;
+  if(!button||!['group-select','group-check'].includes(button.value))return;
+  event.preventDefault();
+  const buttons=Array.from(group.querySelectorAll('button[name="action"]'));
+  if(buttons.some(b=>b.disabled))return;
+  buttons.forEach(b=>b.disabled=true);
+  let notice=group.querySelector('.group-action-result');
+  if(!notice){notice=document.createElement('p');notice.className='group-action-result';notice.setAttribute('role','status');status.after(notice);}
+  notice.textContent=button.value==='group-select'?'Переключение…':'Запуск проверки…';
+  try{
+   const body=new URLSearchParams(new FormData(form));body.set('action',button.value);
+   const response=await fetch('/action',{method:'POST',headers:{Accept:'application/json'},body});
+   const result=await response.json();notice.textContent=result.message;
+   if(result.ok)group.dispatchEvent(new Event('group-updated'));
+  }catch{notice.textContent='Не удалось получить результат. Проверьте состояние группы перед повторной попыткой.';}
+  finally{buttons.forEach(b=>b.disabled=false);}
+ }));
 });
