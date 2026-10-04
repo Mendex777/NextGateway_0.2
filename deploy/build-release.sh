@@ -8,6 +8,7 @@ mkdir -p dist
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.panelVersion=$VERSION -X main.panelCommit=$COMMIT" -o "$STAGE/ngpanel" .
+(cd / && "$STAGE/ngpanel" --version)
 cp web.html ui.js "$STAGE/"
 for file in control.py install-xray.py index-geodata.py update-geodata.py update-panel.py; do cp "deploy/$file" "$STAGE/$file"; done
 python3 - "$STAGE" "$VERSION" "$COMMIT" <<'PY'

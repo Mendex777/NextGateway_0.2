@@ -19,13 +19,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 var panelVersion = "v0.2.0"
 var panelCommit = "dev"
 var db *sql.DB
-var view = template.Must(template.ParseFiles("web.html"))
+var view *template.Template
+var viewOnce sync.Once
+
+func pageTemplate() *template.Template {
+	viewOnce.Do(func() { view = template.Must(template.ParseFiles("web.html")) })
+	return view
+}
 
 type Source struct {
 	ProviderTitle, ProviderMessage, Usage, Limit, Expires, NextUpdate string
@@ -485,7 +492,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		p.Routes = command("ip", "rule")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if e := view.Execute(w, p); e != nil {
+	if e := pageTemplate().Execute(w, p); e != nil {
 		log.Print(e)
 	}
 }
@@ -494,6 +501,7 @@ func main() {
 		fmt.Printf("NGPanel %s %s\n", panelVersion, panelCommit)
 		return
 	}
+	pageTemplate()
 	path := os.Getenv("NG_DB")
 	if path == "" {
 		path = "panel.db"
