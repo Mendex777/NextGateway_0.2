@@ -45,12 +45,29 @@ document.querySelectorAll('.device-picker').forEach(select=>select.onchange=()=>
 (()=>{const box=document.getElementById('action-notice'),text=document.getElementById('action-notice-text');if(!box)return;const url=new URL(location.href);const clean=()=>{for(const key of ['message','operation','since'])url.searchParams.delete(key);history.replaceState(null,'',url);};const show=(message,state)=>{text.textContent=message;box.className='notice '+(state==='error'?'error':state==='running'?'running':'success');box.hidden=false;};document.getElementById('dismiss-notice').onclick=()=>{box.hidden=true;};let flash;try{flash=JSON.parse(sessionStorage.getItem('ngpanel-result'));sessionStorage.removeItem('ngpanel-result');}catch{}if(flash)show(flash.Message,flash.State);const action=document.body.dataset.operation,since=document.body.dataset.since;if(action&&since){show('Выполняется операция…','running');let finished=false;const poll=async()=>{if(finished)return;try{const r=await fetch('/operation-status?'+new URLSearchParams({action,since}));if(!r.ok)return;const s=await r.json();show(s.Message,s.State);if(s.Done){finished=true;clean();if(s.State!=='error'){sessionStorage.setItem('ngpanel-result',JSON.stringify(s));location.replace(url.href);}}}catch{}};poll();setInterval(poll,1500);}else{clean();if(!box.hidden){if(!flash)show(text.textContent,text.textContent.startsWith('Ошибка')?'error':'ok');if(!box.classList.contains('error'))setTimeout(()=>box.hidden=true,12000);}}})();
 
 const balanceSearch = document.getElementById('balance-search');
-if (balanceSearch) balanceSearch.addEventListener('input', () => {
+const balanceOnly = document.getElementById('balance-selected-only');
+const balanceFilter = () => {
  const query=balanceSearch.value.toLocaleLowerCase();
- document.querySelectorAll('.balance-entry').forEach(row => {row.hidden=!row.textContent.toLocaleLowerCase().includes(query);});
-});
+ document.querySelectorAll('.balance-entry').forEach(row => {row.hidden=!row.textContent.toLocaleLowerCase().includes(query) || (balanceOnly.checked && !row.querySelector('input').checked);});
+ const count=document.querySelectorAll('.balance-entry input:checked').length;
+ document.getElementById('balance-selection-count').textContent='Участников: '+count+' из 8';
+};
+if (balanceSearch) {
+ balanceSearch.addEventListener('input',balanceFilter);
+ balanceOnly.addEventListener('change',balanceFilter);
+ document.querySelectorAll('.balance-entry input').forEach(input => input.addEventListener('change',balanceFilter));
+ balanceFilter();
+}
 if (document.getElementById('balance-status')) {
  setInterval(async () => {
-  try { const r=await fetch('/balance-status',{cache:'no-store'});if(!r.ok)return;const s=await r.json();document.getElementById('balance-status').textContent=s.Message; } catch (_) {}
+  try {
+   const r=await fetch('/balance-status',{cache:'no-store'});if(!r.ok)return;
+   const s=await r.json();document.getElementById('balance-status').textContent=s.Message;
+   document.querySelectorAll('.balance-row').forEach(row => {
+    const active=row.dataset.balanceTag===s.Tag;
+    row.classList.toggle('selected',active);
+    row.querySelector('.balance-active').textContent=active?'Для новых соединений':'—';
+   });
+  } catch (_) {}
  },5000);
 }

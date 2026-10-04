@@ -53,6 +53,8 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	BalanceMembers                                                        []BalanceMemberView
+	BalancePending                                                        bool
 	Balance                                                               BalanceSettings
 	BalanceStatus                                                         BalanceStatus
 	Network, DetectedNetwork                                              GatewayNetwork
@@ -458,6 +460,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if p.Tab == "subscriptions" {
 		p.Nodes = allNodes()
 		p.Sources = sources()
+		p.BalanceMembers = balanceMemberViews(p.Balance, p.Selected, p.Nodes, p.Sources, p.BalanceStatus.Tag)
+		if c, e := buildConfig(); e == nil {
+			raw, _ := json.Marshal(c)
+			hash := sha256.Sum256(raw)
+			p.BalancePending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash
+		}
+
 		for i := range p.Sources {
 			for _, n := range p.Nodes {
 				if n.SourceID == p.Sources[i].ID {

@@ -22,6 +22,37 @@ type BalanceStatus struct {
 	Message, Tag, Name string
 }
 
+type BalanceMemberView struct {
+	Node             Node
+	Source           string
+	Selected, Active bool
+}
+
+func balanceMemberViews(b BalanceSettings, selected string, nodes []Node, sources []Source, active string) []BalanceMemberView {
+	byID := map[string]Node{}
+	bySource := map[int]string{}
+	for _, n := range nodes {
+		byID[strconv.Itoa(n.ID)] = n
+	}
+	for _, s := range sources {
+		bySource[s.ID] = s.Name
+	}
+	seen := map[string]bool{}
+	var out []BalanceMemberView
+	for _, id := range append([]string{selected}, b.Nodes...) {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		n, ok := byID[id]
+		if !ok {
+			continue
+		}
+		out = append(out, BalanceMemberView{Node: n, Source: bySource[n.SourceID], Selected: id == selected, Active: active == "auto-vpn-"+id+"-"})
+	}
+	return out
+}
+
 func balanceSettings() BalanceSettings {
 	var b BalanceSettings
 	json.Unmarshal([]byte(setting("balance_settings")), &b)
