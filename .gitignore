@@ -1,0 +1,15 @@
+ngpanel
+ngpanel.new
+*.exe
+*.db
+*.db-shm
+*.db-wal
+*.json.backup
+panel.db*
+.probe/
+__pycache__/
+*.pyc
+backups/
+*credentials*
+sub.txt
+ngpanel-*.json

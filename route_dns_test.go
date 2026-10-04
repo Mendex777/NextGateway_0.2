@@ -1,0 +1,4 @@
+package main
+import("strings";"testing")
+func TestExplainDNSDeviceMismatch(t *testing.T){configDatabase(t);db.Exec("INSERT INTO nodes VALUES(1,'vless://fixture@127.0.0.1:1?security=none')");saveSetting("selected_node","1");saveSetting("default_route","proxy");c:=RouteCheck{Domain:"example.com",Target:"proxy"};explainDNS(&c);if c.DNSTarget!="direct" || c.Warning=="" || c.DNSServers!="1.1.1.1"{t.Fatalf("missing direct DNS warning: %+v",c)}}
+func TestExplainDNSRuleAndReserves(t *testing.T){configDatabase(t);saveSetting("dns_mode","rules");saveSetting("dns_direct_servers","1.1.1.1\n8.8.8.8");db.Exec("INSERT INTO rules VALUES(1,1,'exception','domain','domain:example.com','direct')");c:=RouteCheck{Domain:"www.example.com",Target:"direct"};explainDNS(&c);if c.DNSTarget!="direct" || !strings.Contains(c.DNSReason,"#1") || c.DNSServers!="1.1.1.1\n8.8.8.8" || c.Warning!=""{t.Fatalf("incorrect DNS explanation: %+v",c)}}
