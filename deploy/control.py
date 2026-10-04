@@ -280,7 +280,7 @@ if __name__ == '__main__':
             if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''))
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)
-                run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils'],timeout=150)
+                run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils','ieee-data'],timeout=150)
                 message='Компоненты шлюза установлены; перехват ещё не включён'
             elif action=='geodata':
                 result=run(['/usr/bin/python3','/opt/ngpanel/update-geodata.py'],check=False,timeout=270)
