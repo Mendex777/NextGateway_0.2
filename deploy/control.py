@@ -117,6 +117,18 @@ def migrate_network():
         atomic(META,json.dumps(meta),0o600)
     return meta
 
+def restore_gateway_on_boot():
+    if not load(META).get('gateway'):return
+    # netplan apply can return before DHCP has supplied an address again.
+    for attempt in range(30):
+        try:
+            n=applied_network(migrate_network())
+            break
+        except (ValueError,subprocess.CalledProcessError):
+            if attempt==29:raise
+            time.sleep(1)
+    enable_gateway(n)
+
 def nft_text(n):
     n=validate_network(n)
     text = '''table inet ngpanel {
@@ -334,8 +346,7 @@ if __name__ == '__main__':
                 fcntl.flock(lock,fcntl.LOCK_EX)
                 network_revert()
         elif sys.argv[1]=='gateway-restore':
-            meta=migrate_network()
-            if meta.get('gateway'): enable_gateway(applied_network(meta))
+            restore_gateway_on_boot()
         else: raise ValueError('Unknown fixed operation')
         sys.exit(0)
     with open('/run/ngpanel-control.lock','w') as lock:

@@ -32,6 +32,12 @@ class NetworkTests(unittest.TestCase):
         with patch.object(control,'run',side_effect=fake_run):
             self.assertEqual(control.applied_network({'network':self.network}),self.network)
 
+    def test_boot_waits_for_dhcp_after_recovery(self):
+        with patch.object(control,'load',return_value={'gateway':True}), patch.object(control,'migrate_network',return_value={'gateway':True}), patch.object(control,'applied_network',side_effect=[ValueError('DHCP pending'),ValueError('DHCP pending'),self.network]), patch.object(control.time,'sleep') as sleep, patch.object(control,'enable_gateway') as enable:
+            control.restore_gateway_on_boot()
+            self.assertEqual(sleep.call_count,2)
+            enable.assert_called_once_with(self.network)
+
     def test_absent_address_rejected_before_mutation(self):
         with patch.object(control,'run',return_value=SimpleNamespace(stdout='[]')):
             with self.assertRaises(ValueError):control.validate_network(self.network,True)
