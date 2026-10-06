@@ -84,7 +84,10 @@ func componentOverview(p Page) []ComponentStatus {
 	dns := "Не проверен"
 	class = "neutral"
 	if stamp, e := time.Parse(time.RFC3339, setting("dns_last_check_time")); e == nil {
-		dns = setting("dns_last_check") + " · " + stamp.Local().Format("02.01 15:04")
+		dns = "Ошибка проверки · " + stamp.Local().Format("02.01 15:04")
+		if setting("dns_last_check_ok") == "1" {
+			dns = "Отвечает · " + stamp.Local().Format("02.01 15:04")
+		}
 		class = "warn"
 		if setting("dns_last_check_ok") == "1" && time.Since(stamp) < 10*time.Minute && strings.TrimSpace(p.Service) == "active" {
 			class = "good"
