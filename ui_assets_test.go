@@ -29,7 +29,8 @@ func TestOverviewActionsFollowReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"start", "dependencies", "apply"} {
-		if strings.Contains(out.String(), `name="action" value="`+action+`"`) {
+		componentsHTML := strings.Split(strings.Split(out.String(), `<table id="component-overview">`)[1], `</table>`)[0]
+		if strings.Contains(componentsHTML, `name="action" value="`+action+`"`) {
 			t.Fatalf("redundant ready action: %s", action)
 		}
 	}

@@ -280,6 +280,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+	if r.URL.Path == "/configuration-status" && r.Method == http.MethodGet {
+		pending, configError := configurationState()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"pending": pending, "config_error": configError, "initialized": readRuntime().ConfigHash != ""})
+		return
+	}
 	if r.URL.Path == "/operation-status" && r.Method == http.MethodGet {
 		operationHandler(w, r)
 		return
@@ -360,7 +366,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				}
 				msg = "Установка запрошена. Обновите страницу через несколько секунд."
 			case "settings":
-				msg = "Маршрут сохранён. Нажмите «Применить конфигурацию», чтобы изменить трафик."
+				msg = "Маршрут сохранён. Нажмите «Применить изменения», чтобы изменить трафик."
 				mode := r.FormValue("mode")
 				if err := validateRuleNode(mode); err != nil {
 					http.Error(w, "Invalid mode", 400)
@@ -407,7 +413,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
-		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "rule-toggle" || r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
+		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "settings" || r.FormValue("action") == "rule-order" || r.FormValue("action") == "rule-toggle" || r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			if e != nil {
@@ -418,6 +424,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				id, _ := strconv.Atoi(r.FormValue("id"))
 				result["enabled"] = setting(fmt.Sprintf("rule_disabled:%d", id)) != "1"
 			}
+			pending, configError := configurationState()
+			result["pending"], result["config_error"] = pending, configError
+			result["initialized"] = readRuntime().ConfigHash != ""
 			json.NewEncoder(w).Encode(result)
 			return
 		}
@@ -455,15 +464,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if p.Tab == "" {
 		p.Tab = "status"
 	}
-	// Saved and applied settings must be distinguishable on every page.
-	if c, err := buildConfig(); err != nil {
-		p.ConfigError = err.Error()
-		p.Pending = true
-	} else {
-		b, _ := json.Marshal(c)
-		hash := sha256.Sum256(b)
-		p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups) || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
-	}
+	p.Pending, p.ConfigError = configurationState()
+
 	if p.Tab == "status" {
 		if p.Runtime.Gateway {
 			policy := command("ip", "-4", "rule")
@@ -616,4 +618,17 @@ func main() {
 	go groupWorker()
 	s := http.Server{Addr: addr, Handler: http.HandlerFunc(handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Fatal(s.ListenAndServe())
+}
+
+// Compare the saved configuration with the running gateway for every page and AJAX action.
+func configurationState() (bool, string) {
+	c, err := buildConfig()
+	if err != nil {
+		return true, err.Error()
+	}
+	b, _ := json.Marshal(c)
+	hash := sha256.Sum256(b)
+	runtime := readRuntime()
+	pending := hex.EncodeToString(hash[:]) != runtime.ConfigHash || groupPolicyPending(c, runtime.Groups) || (setting("gateway_enabled") == "1") != runtime.Gateway || (runtime.Gateway && gatewayNetwork() != runtime.AppliedNetwork)
+	return pending, ""
 }

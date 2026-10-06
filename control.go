@@ -391,7 +391,7 @@ func validateRule(kind, value, target string) (string, error) {
 }
 func controlAction(r *http.Request) (bool, string, error) {
 	var e error
-	msg := "Сохранено; для применения нажмите «Применить конфигурацию»"
+	msg := "Сохранено в панели"
 	switch r.FormValue("action") {
 	case "panel-update-check", "panel-update-install", "panel-update-rollback":
 		err := requestPanelUpdate(strings.TrimPrefix(r.FormValue("action"), "panel-update-"))
