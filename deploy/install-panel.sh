@@ -16,6 +16,7 @@ else
 fi
 umask 077
 if [ "${NG_PREBUILT:-0}" != 1 ]; then
+test -f frontend/dist/index.html || { echo "Build frontend first: npm ci --prefix frontend && npm run build --prefix frontend" >&2; exit 1; }
 PANEL_VERSION=${PANEL_VERSION:-$(cat VERSION)}
 PANEL_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo source)
 go build -trimpath -ldflags "-X main.panelVersion=$PANEL_VERSION -X main.panelCommit=$PANEL_COMMIT" -o ngpanel .

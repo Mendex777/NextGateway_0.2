@@ -14,3 +14,4 @@ backups/
 sub.txt
 ngpanel-*.json
 dist/
+node_modules/

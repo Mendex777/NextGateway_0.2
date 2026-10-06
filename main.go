@@ -413,13 +413,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
-		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "settings" || r.FormValue("action") == "rule-order" || r.FormValue("action") == "rule-toggle" || r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
+		if r.Header.Get("Accept") == "application/json" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			if e != nil {
 				w.WriteHeader(http.StatusBadRequest)
 			}
-			result := map[string]any{"ok": e == nil, "message": msg, "since": started}
+			result := map[string]any{"ok": e == nil, "message": msg, "since": started, "operation": operationKind(r.FormValue("action")), "action": r.FormValue("action")}
 			if e == nil && r.FormValue("action") == "rule-toggle" {
 				id, _ := strconv.Atoi(r.FormValue("id"))
 				result["enabled"] = setting(fmt.Sprintf("rule_disabled:%d", id)) != "1"
@@ -441,6 +441,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
+	p := pageData(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if e := pageTemplate().Execute(w, p); e != nil {
+		log.Print(e)
+	}
+}
+func pageData(r *http.Request) Page {
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
 	p.Network = gatewayNetwork()
 	if detected, e := detectNetwork(); e == nil {
@@ -572,11 +579,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 		p.Routes = command("ip", "rule")
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if e := pageTemplate().Execute(w, p); e != nil {
-		log.Print(e)
-	}
+	return p
 }
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Printf("NGPanel %s %s\n", panelVersion, panelCommit)
@@ -614,9 +619,11 @@ func main() {
 		log.Fatal(e)
 	}
 	log.Printf("NGPanel listening on %s", addr)
-	go subscriptionWorker()
-	go groupWorker()
-	s := http.Server{Addr: addr, Handler: http.HandlerFunc(handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second}
+	if os.Getenv("NG_REVIEW") != "1" {
+		go subscriptionWorker()
+		go groupWorker()
+	}
+	s := http.Server{Addr: addr, Handler: newRouter(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Fatal(s.ListenAndServe())
 }
 
