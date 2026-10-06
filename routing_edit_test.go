@@ -1,11 +1,36 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestRuleSwitchReturnsSavedState(t *testing.T) {
+	configDatabase(t)
+	db.Exec("INSERT INTO rules VALUES(1,100,'example','domain','example.com','direct')")
+	for _, enabled := range []bool{false, true} {
+		values := url.Values{"action": {"rule-toggle"}, "id": {"1"}, "tab": {"routing"}}
+		r := httptest.NewRequest("POST", "/action", strings.NewReader(values.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Accept", "application/json")
+		r.Header.Set("Origin", "http://example.com")
+		w := httptest.NewRecorder()
+		handler(w, r)
+		var result struct {
+			OK      bool `json:"ok"`
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || !result.OK || result.Enabled != enabled {
+			t.Fatalf("unexpected switch response: %d %s", w.Code, w.Body.String())
+		}
+		if allRules()[0].Disabled == enabled {
+			t.Fatal("response does not match saved rule")
+		}
+	}
+}
 
 func ruleAction(t *testing.T, values url.Values) error {
 	t.Helper()

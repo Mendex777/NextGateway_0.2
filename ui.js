@@ -68,18 +68,29 @@ document.querySelectorAll('.device-picker').forEach(select=>select.onchange=()=>
 
 const balanceSearch = document.getElementById('balance-search');
 const balanceOnly = document.getElementById('balance-selected-only');
+const balanceSource = document.getElementById('balance-source');
 const balanceFilter = () => {
- const query=balanceSearch.value.toLocaleLowerCase();
- document.querySelectorAll('.balance-entry').forEach(row => {row.hidden=!row.textContent.toLocaleLowerCase().includes(query) || (balanceOnly.checked && !row.querySelector('input').checked);});
- const count=document.querySelectorAll('.balance-entry input:checked').length;
- document.getElementById('balance-selection-count').textContent='Участников: '+count+' из 8';
+ if(!balanceSearch)return;
+ const rows=Array.from(document.querySelectorAll('.balance-entry'));
+ const selected=rows.filter(row=>row.querySelector('input').checked);
+ const query=balanceSearch.value.trim().toLocaleLowerCase();
+ let visible=0;
+ for(const row of rows){const input=row.querySelector('input');row.hidden=!row.textContent.toLocaleLowerCase().includes(query)||(balanceOnly.checked&&!input.checked)||(balanceSource.value&&row.dataset.source!==balanceSource.value);if(!row.hidden)visible++;row.classList.toggle('picked',input.checked);input.disabled=input.dataset.incompatible==='1'||(!input.checked&&selected.length>=8);}
+ const count=document.getElementById('balance-selection-count');count.textContent=selected.length+' / 8';
+ const chips=document.getElementById('balance-chips');chips.replaceChildren();
+ if(!selected.length){const hint=document.createElement('small');hint.textContent='Пока ничего не выбрано';chips.append(hint);}
+ for(const row of selected){const input=row.querySelector('input'),name=row.querySelector('.member-name').textContent;const chip=document.createElement('button');chip.type='button';chip.className='member-chip';chip.textContent=name+' ×';chip.setAttribute('aria-label','Убрать '+name);chip.onclick=()=>{input.checked=false;balanceFilter();};chips.append(chip);}
+ document.getElementById('balance-empty').hidden=visible>0;
+ document.getElementById('balance-clear').disabled=!selected.length;
 };
-if (balanceSearch) {
- balanceSearch.addEventListener('input',balanceFilter);
- balanceOnly.addEventListener('change',balanceFilter);
- document.querySelectorAll('.balance-entry input').forEach(input => input.addEventListener('change',balanceFilter));
+if(balanceSearch){
+ document.querySelectorAll('.balance-entry input').forEach(input=>{input.dataset.incompatible=input.disabled?'1':'0';input.addEventListener('change',balanceFilter);});
+ balanceSearch.addEventListener('input',balanceFilter);balanceOnly.addEventListener('change',balanceFilter);balanceSource.addEventListener('change',balanceFilter);
+ document.getElementById('balance-clear').onclick=()=>{document.querySelectorAll('.balance-entry input').forEach(input=>input.checked=false);balanceFilter();};
+ balanceSearch.closest('form').addEventListener('submit',event=>{const count=document.querySelectorAll('.balance-entry input:checked').length;if(count<2||count>8){event.preventDefault();document.getElementById('balance-selection-count').textContent='Нужно от 2 до 8 подключений';balanceSearch.focus();}});
  balanceFilter();
 }
+
 document.querySelectorAll('.group-status').forEach(el=>{
  const poll=async()=>{try{
   const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;
@@ -159,3 +170,11 @@ document.querySelectorAll('dialog').forEach(dialog=>{
  button.onclick=()=>{const event=new Event('cancel',{cancelable:true});if(dialog.dispatchEvent(event))dialog.close();};dialog.prepend(button);
 });
 if(groupEdit)groupEdit.addEventListener('close',()=>{const url=new URL(location.href);url.searchParams.delete('group');history.replaceState(null,'',url);});
+
+document.querySelectorAll('.rule-switch-form').forEach(form=>form.addEventListener('submit',async event=>{
+ event.preventDefault();const button=form.querySelector('[role="switch"]');if(button.disabled)return;button.disabled=true;
+ try{const body=new URLSearchParams(new FormData(form));body.set('action','rule-toggle');const response=await fetch('/action',{method:'POST',headers:{Accept:'application/json'},body});const result=await response.json();if(!result.ok)throw new Error(result.message);const checked=result.enabled;button.setAttribute('aria-checked',String(checked));button.title=(checked?'Отключить':'Включить')+' правило';
+ const notice=document.getElementById('action-notice');notice.className='notice success';notice.hidden=false;document.getElementById('action-notice-text').textContent=result.message;
+ if(!document.querySelector('.pending-bar')){const bar=document.createElement('section');bar.className='pending-bar';bar.setAttribute('aria-label','Неприменённые изменения');bar.innerHTML='<div><strong>Есть неприменённые изменения</strong><small>Применение перезапустит Xray. Текущие соединения могут переподключиться.</small></div><form method="post" action="/action"><input type="hidden" name="tab" value="routing"><button name="action" value="apply" class="primary">Применить конфигурацию</button></form>';document.getElementById('main-content').prepend(bar);}
+ }catch(error){const notice=document.getElementById('action-notice');notice.className='notice error';notice.hidden=false;document.getElementById('action-notice-text').textContent=error.message||'Не удалось сохранить. Обновите страницу перед повторной попыткой.';}finally{button.disabled=false;}
+}));

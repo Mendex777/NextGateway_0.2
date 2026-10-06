@@ -407,13 +407,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
-		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
+		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "rule-toggle" || r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			if e != nil {
 				w.WriteHeader(http.StatusBadRequest)
 			}
-			json.NewEncoder(w).Encode(map[string]any{"ok": e == nil, "message": msg, "since": started})
+			result := map[string]any{"ok": e == nil, "message": msg, "since": started}
+			if e == nil && r.FormValue("action") == "rule-toggle" {
+				id, _ := strconv.Atoi(r.FormValue("id"))
+				result["enabled"] = setting(fmt.Sprintf("rule_disabled:%d", id)) != "1"
+			}
+			json.NewEncoder(w).Encode(result)
 			return
 		}
 		redirect := "/?tab=" + url.QueryEscape(r.FormValue("tab")) + "&message=" + url.QueryEscape(msg)
