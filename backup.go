@@ -81,6 +81,9 @@ func joinColumns(cols []string) string {
 	return s
 }
 func restoreBackup(raw []byte) error {
+	return restoreBackupOptions(raw, false)
+}
+func restoreBackupOptions(raw []byte, keepMachine bool) error {
 	var file panelBackup
 	if e := json.Unmarshal(raw, &file); e != nil {
 		return fmt.Errorf("Некорректный JSON бекапа")
@@ -134,6 +137,10 @@ func restoreBackup(raw []byte) error {
 		return e
 	}
 	defer tx.Rollback()
+	var machineNetwork string
+	if keepMachine {
+		tx.QueryRow("SELECT value FROM settings WHERE key='gateway_network'").Scan(&machineNetwork)
+	}
 	for _, name := range []string{"nodes", "sources", "rules", "settings"} {
 		if _, e = tx.Exec("DELETE FROM " + name); e != nil {
 			return e
@@ -288,6 +295,16 @@ func restoreBackup(raw []byte) error {
 	if invalid {
 		return fmt.Errorf("Нарушены связи данных бекапа")
 	}
+	if keepMachine {
+		if machineNetwork == "" {
+			_, e = tx.Exec("DELETE FROM settings WHERE key='gateway_network'")
+		} else {
+			_, e = tx.Exec("INSERT INTO settings(key,value) VALUES('gateway_network',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", machineNetwork)
+		}
+		if e != nil {
+			return e
+		}
+	}
 	return tx.Commit()
 }
 func backupHandler(w http.ResponseWriter, r *http.Request) {
@@ -327,7 +344,7 @@ func backupHandler(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	raw, e := io.ReadAll(f)
 	if e == nil {
-		e = restoreBackup(raw)
+		e = restoreBackupOptions(raw, r.FormValue("keep_machine") == "1")
 	}
 	if e != nil {
 		http.Error(w, e.Error(), 400)

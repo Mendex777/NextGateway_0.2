@@ -406,7 +406,7 @@ if __name__ == '__main__':
                 if not stat.S_ISREG(info.st_mode) or info.st_uid!=pwd.getpwnam('ngpanel').pw_uid or info.st_size>2*1024*1024: raise ValueError('Invalid request')
                 job=json.load(file)
             action=job.get('Action','')
-            if action not in ('check','apply','start','stop','rollback','network','network-confirm','logs','geodata','dependencies'): raise ValueError('Unknown action')
+            if action not in ('check','apply','start','restart','stop','rollback','network','network-confirm','logs','geodata','dependencies'): raise ValueError('Unknown action')
             runtime.update(State='running',Action=action,Message='Выполняется задание')
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             message=''
@@ -419,9 +419,11 @@ if __name__ == '__main__':
                 result=run(['/usr/bin/python3','/opt/ngpanel/update-geodata.py'],check=False,timeout=270)
                 if result.returncode:raise ValueError('Обновление geo-баз не завершено. '+(result.stderr.splitlines()[-1] if result.stderr else 'Подробности в журнале')[:500])
                 message=result.stdout.strip()
-            elif action=='start':
+            elif action in ('start','restart'):
                 if not CONF.exists():raise ValueError('Сначала примените конфигурацию')
-                run(['systemctl','enable','--now','xray']);time.sleep(1)
+                run(['systemctl','enable','--now','xray'])
+                if action=='restart':run(['systemctl','restart','xray'])
+                time.sleep(1)
                 if not active():raise ValueError('Xray failed to start')
                 message='Xray запущен'
             elif action=='stop':
@@ -443,15 +445,20 @@ if __name__ == '__main__':
                 pathlib.Path('/etc/ngpanel/network-backup.json').unlink(missing_ok=True)
                 runtime['Network']='direct';message='Выход ВМ через роутер подтверждён'
             elif action=='logs':
-                text=run(['journalctl','-u','xray','-n','60','--no-pager']).stdout
+                text=run(['journalctl','-u','xray','-n','1000','--no-pager']).stdout
                 text=re.sub(r'(?i)(?:vless|vmess|trojan)://\S+','[REDACTED]',text)
                 text=re.sub(r'[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}','[UUID]',text)
-                atomic(ROOT/'xray-log',text);message='Журнал Xray обновлён'
+                atomic(ROOT/'xray-log',text)
+                panel=run(['journalctl','-u','ngpanel','-n','1000','--no-pager']).stdout
+                panel=re.sub(r'(?i)(?:https?|vless|vmess|trojan)://\S+','[REDACTED]',panel)
+                atomic(ROOT/'panel-log',panel);message='Журналы обновлены'
             runtime.update(State='ok',Message=message)
         except Exception as exc:
             print(str(exc),file=sys.stderr)
             runtime.update(State='error',Message=str(exc) if isinstance(exc,ValueError) else 'Системное задание завершилось ошибкой; рабочие настройки сохранены, подробности в журнале ngpanel-control')
         finally:
+            if CONF.exists():
+                atomic(ROOT/'applied-config.json',CONF.read_text(),0o640,pwd.getpwnam('ngpanel').pw_gid)
             meta=load(META)
             runtime['AppliedNetwork']=meta.get('network',{})
             runtime['Balance']=bool(meta.get('balance'))

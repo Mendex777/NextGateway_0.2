@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,33 @@ func newRouter() http.Handler {
 		}
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, pageData(c.Request))
+	})
+	router.GET("/api/dashboard", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(200, hostDashboard())
+	})
+	router.GET("/api/dashboard/config", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		raw, err := dashboardConfig()
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Применённая конфигурация ещё не создана или недоступна"})
+			return
+		}
+		c.Data(200, "application/json", raw)
+	})
+	router.GET("/api/dashboard/logs", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		name := "xray-log"
+		if c.Query("service") == "panel" {
+			name = "panel-log"
+		}
+		raw, err := os.ReadFile(filepath.Join(stateDir(), name))
+		if err != nil {
+			c.JSON(200, gin.H{"text": "", "updated": ""})
+			return
+		}
+		info, _ := os.Stat(filepath.Join(stateDir(), name))
+		c.JSON(200, gin.H{"text": string(raw), "updated": info.ModTime().UTC().Format("2006-01-02T15:04:05Z")})
 	})
 	router.POST("/api/action", func(c *gin.Context) {
 		if os.Getenv("NG_REVIEW") == "1" {

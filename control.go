@@ -432,7 +432,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 			e = enqueue(r.FormValue("action"), c)
 		}
 		msg = "Задание поставлено в очередь; результат отображается на странице состояния"
-	case "start", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
+	case "start", "restart", "stop", "rollback", "network-confirm", "logs", "geodata", "dependencies":
 		e = enqueue(r.FormValue("action"), nil)
 		msg = "Задание поставлено в очередь"
 	case "group-select":

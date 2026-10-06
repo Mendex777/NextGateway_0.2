@@ -21,7 +21,7 @@ func operationKind(action string) string {
 		return "panel"
 	case "install":
 		return "install"
-	case "check", "apply", "start", "stop", "rollback", "network", "network-confirm", "logs", "geodata", "dependencies":
+	case "check", "apply", "start", "restart", "stop", "rollback", "network", "network-confirm", "logs", "geodata", "dependencies":
 		return "control"
 	}
 	return ""

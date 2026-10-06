@@ -20,7 +20,6 @@ import {
   SwapOutlined,
   ApartmentOutlined,
   ToolOutlined,
-  DatabaseOutlined,
   PushpinFilled,
   PushpinOutlined,
   SearchOutlined,
@@ -30,7 +29,8 @@ import { action, getJSON, getPage } from "./api";
 import type { Page, Values } from "./types";
 import Routing from "./Routing";
 import Subscriptions from "./Subscriptions";
-import { Overview, Devices, Gateway, Diagnostics, Backup } from "./Pages";
+import Dashboard from "./Dashboard";
+import { Devices, Gateway, Diagnostics, Backup } from "./Pages";
 const navigation = [
   { key: "status", label: "Главная", icon: <DashboardOutlined /> },
   {
@@ -42,7 +42,6 @@ const navigation = [
   { key: "routing", label: "Маршрутизация", icon: <SwapOutlined /> },
   { key: "gateway", label: "DNS и шлюз", icon: <ApartmentOutlined /> },
   { key: "diagnostics", label: "Диагностика", icon: <ToolOutlined /> },
-  { key: "backup", label: "Бекап", icon: <DatabaseOutlined /> },
 ];
 function stored(key: string, fallback: boolean) {
   try {
@@ -280,7 +279,7 @@ export default function App() {
           {sidebar(false)}
         </Drawer>
         <Layout.Content id="main-content">
-          {page && (
+          {page && (tab !== "status" || page.Pending || page.ConfigError) && (
             <Card className="config-card">
               <div className="config-row">
                 <Button
@@ -344,7 +343,12 @@ export default function App() {
             ) : tab === "subscriptions" ? (
               <Subscriptions p={page} run={run} reload={reload} />
             ) : tab === "status" ? (
-              <Overview p={page} run={run} navigate={navigate} />
+              <Dashboard
+                p={page}
+                run={run}
+                navigate={navigate}
+                reload={reload}
+              />
             ) : tab === "devices" ? (
               <Devices p={page} run={run} />
             ) : tab === "gateway" ? (
