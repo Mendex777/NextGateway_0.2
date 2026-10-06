@@ -53,12 +53,13 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	SourceCount, NodeCount, RuleCount, DeviceCount                        int
+	GatewayReady                                                          bool
 	Components                                                            []ComponentStatus
 	Readiness                                                             string
 	Wizard                                                                bool
 	Groups                                                                []BalanceGroup
 	EditGroup                                                             *BalanceGroup
-	BalancePending                                                        bool
 	Network, DetectedNetwork                                              GatewayNetwork
 	NetworkError                                                          string
 	OperationAction, OperationSince                                       string
@@ -278,7 +279,7 @@ func refresh(id string) error {
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
 	if r.URL.Path == "/operation-status" && r.Method == http.MethodGet {
 		operationHandler(w, r)
 		return
@@ -304,6 +305,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/ui.js" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		http.ServeFile(w, r, "ui.js")
+		return
+	}
+	if r.URL.Path == "/ui.css" && r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Write([]byte(panelCSS))
 		return
 	}
 	if r.URL.Path == "/group-check-status" && r.Method == http.MethodGet {
@@ -444,6 +450,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if p.Tab == "" {
 		p.Tab = "status"
 	}
+	// Saved and applied settings must be distinguishable on every page.
+	if c, err := buildConfig(); err != nil {
+		p.ConfigError = err.Error()
+		p.Pending = true
+	} else {
+		b, _ := json.Marshal(c)
+		hash := sha256.Sum256(b)
+		p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups) || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
+	}
 	if p.Tab == "status" {
 		if p.Runtime.Gateway {
 			policy := command("ip", "-4", "rule")
@@ -452,14 +467,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				p.GatewayHealth = "Отсутствует правило или маршрут TPROXY. Примените конфигурацию для восстановления."
 			}
 		}
-		if c, err := buildConfig(); err != nil {
-			p.ConfigError = err.Error()
-			p.Pending = true
-		} else {
-			b, _ := json.Marshal(c)
-			hash := sha256.Sum256(b)
-			p.Pending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups) || (p.Gateway == "1") != p.Runtime.Gateway || (p.Runtime.Gateway && p.Network != p.Runtime.AppliedNetwork)
-		}
 		p.Version = command("xray", "version")
 		p.Service = command("systemctl", "is-active", "xray")
 		p.Routes = command("ip", "route")
@@ -467,6 +474,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		p.Uptime = command("uptime", "-p")
 		p.Components = componentOverview(p)
 		p.Readiness = overallReadiness(p)
+		p.GatewayReady = p.Runtime.Gateway && strings.TrimSpace(p.Service) == "active" && p.GatewayHealth == ""
+		db.QueryRow("SELECT count(*) FROM sources").Scan(&p.SourceCount)
+		db.QueryRow("SELECT count(*) FROM nodes").Scan(&p.NodeCount)
+		p.RuleCount = len(allRules())
+		p.DeviceCount = len(devices())
 		p.Wizard = r.URL.Query().Get("setup") == "1" || (p.Runtime.ConfigHash == "" && setting("setup_skipped") != "1")
 		if b, e := os.ReadFile("/var/lib/ngpanel/install-status"); e == nil {
 			p.Install = string(b)
@@ -485,12 +497,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				p.EditGroup = g
 			}
 		}
-		if c, e := buildConfig(); e == nil {
-			raw, _ := json.Marshal(c)
-			hash := sha256.Sum256(raw)
-			p.BalancePending = hex.EncodeToString(hash[:]) != p.Runtime.ConfigHash || groupPolicyPending(c, p.Runtime.Groups)
-		}
-
 		for i := range p.Sources {
 			for _, n := range p.Nodes {
 				if n.SourceID == p.Sources[i].ID {

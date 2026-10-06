@@ -1,4 +1,26 @@
-
+const localDate=value=>{const date=new Date(value);return Number.isNaN(date.getTime())?value:date.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});};
+document.querySelectorAll('time[datetime]').forEach(time=>{time.title=new Date(time.dateTime).toLocaleString('ru-RU');time.textContent=localDate(time.dateTime);});
+const menuToggle=document.getElementById('menu-toggle');
+const closeNav=()=>{document.body.classList.remove('nav-open');menuToggle?.setAttribute('aria-expanded','false');};
+if(menuToggle){menuToggle.onclick=()=>{const open=document.body.classList.toggle('nav-open');menuToggle.setAttribute('aria-expanded',String(open));};document.getElementById('menu-overlay').onclick=closeNav;}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeNav();document.querySelectorAll('.action-menu[open]').forEach(menu=>menu.open=false);}});
+document.addEventListener('click',e=>{document.querySelectorAll('.action-menu[open]').forEach(menu=>{if(!menu.contains(e.target)||e.target.closest('button,a'))menu.open=false;});});
+document.querySelectorAll('.action-menu').forEach(menu=>menu.addEventListener('toggle',()=>{if(!menu.open)return;document.querySelectorAll('.action-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});const box=menu.querySelector('div'),anchor=menu.querySelector('summary').getBoundingClientRect();box.style.position='fixed';box.style.width='190px';box.style.right='auto';box.style.bottom='auto';box.style.left=Math.max(8,Math.min(innerWidth-198,anchor.right-190))+'px';box.style.top=(anchor.bottom+box.offsetHeight+8>innerHeight?Math.max(8,anchor.top-box.offsetHeight-5):anchor.bottom+5)+'px';}));
+window.addEventListener('resize',()=>document.querySelectorAll('.action-menu[open]').forEach(menu=>menu.open=false));
+document.addEventListener('scroll',e=>{if(!e.target.closest?.('.action-menu'))document.querySelectorAll('.action-menu[open]').forEach(menu=>menu.open=false);},true);
+document.querySelectorAll('[data-persist-group]').forEach(group=>{try{group.open=localStorage.getItem('vpn-group:'+group.dataset.persistGroup)==='1';}catch{}group.addEventListener('toggle',()=>{try{localStorage.setItem('vpn-group:'+group.dataset.persistGroup,group.open?'1':'0');}catch{}});});
+// Returning from a subscription action keeps the user's place in a long list.
+if(document.body.dataset.tab==='subscriptions'){
+ try{const restore=JSON.parse(sessionStorage.getItem('subscription-scroll'));sessionStorage.removeItem('subscription-scroll');if(restore&&Date.now()-restore.time<60000)requestAnimationFrame(()=>window.scrollTo(0,restore.y));}catch{}
+ document.addEventListener('submit',e=>{if(e.defaultPrevented||e.target.closest('dialog'))return;try{sessionStorage.setItem('subscription-scroll',JSON.stringify({y:window.scrollY,time:Date.now()}));}catch{}});
+}
+const renderProbe=(cell,p)=>{
+ cell.title=p.Message||'';cell.replaceChildren();const status=document.createElement(p.State==='ok'?'strong':'span');
+ status.className=p.State==='ok'?'health good':p.State==='error'?'badge bad':p.State==='running'?'badge':'muted';
+ status.textContent=p.State==='ok'?p.HTTPSMS+' мс':p.State==='error'?'Ошибка':p.State==='running'?'Проверка…':'Не проверен';cell.append(status);
+ if(p.State==='error'&&p.Message){const error=document.createElement('small');error.textContent=p.Message;cell.append(error);}
+ if(p.Checked){const stamp=document.createElement('small');stamp.textContent=localDate(p.Checked);stamp.title=new Date(p.Checked).toLocaleString('ru-RU');cell.append(stamp);}
+};
 const edit = document.getElementById('rule-edit');
 if (edit) { edit.showModal(); const closeEdit = () => { edit.close(); const u=new URL(location.href);u.searchParams.delete('edit');history.replaceState(null,'',u); };document.getElementById('close-rule-edit').onclick=closeEdit;edit.addEventListener('cancel',e=>{e.preventDefault();closeEdit();});edit.addEventListener('click',e=>{if(e.target===edit){const r=edit.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeEdit();}}); }
 const list=document.getElementById('rule-list');let moving=null;
@@ -30,7 +52,7 @@ if(groups){
  let timer;
  const poll=async()=>{
   try{const response=await fetch('/probe-status');if(!response.ok)throw Error();const data=await response.json();let running=data.Batch.State==='running';
-   for(const row of groups.querySelectorAll('[data-node-id]')){const p=data.Nodes[row.dataset.nodeId]||{};row.dataset.state=p.State||'';if(p.State==='running')running=true;const cell=row.querySelector('.probe-result');cell.replaceChildren(document.createTextNode(p.Message||'Не проверен'));if(p.Checked){cell.append(document.createElement('br'));const small=document.createElement('small');small.textContent=p.Checked+(p.UDP?'':' · TCP: '+p.TCPMS+' мс')+(p.State==='ok'?' · HTTPS: '+p.HTTPSMS+' мс':'');cell.append(small);}}
+   for(const row of groups.querySelectorAll('[data-node-id]')){const p=data.Nodes[row.dataset.nodeId]||{};row.dataset.state=p.State||'';if(p.State==='running')running=true;const cell=row.querySelector('.probe-result');renderProbe(cell,p);}
    const batch=data.Batch,panel=document.getElementById('batch-panel');panel.hidden=!batch.State;if(batch.State){const group=allGroups.find(g=>g.dataset.sourceId===batch.SourceID);document.getElementById('batch-progress').textContent=(group?group.querySelector('.source-name').textContent+': ':'')+(batch.State==='running'?'Проверка':batch.State==='cancelled'?'Проверка отменена':'Проверка завершена')+' — '+batch.Done+' / '+batch.Total+', работают: '+batch.OK;document.getElementById('cancel-batch').hidden=batch.State!=='running';}applyFilters(false);timer=setTimeout(poll,running?2000:15000);
   }catch{timer=setTimeout(poll,15000);}
  };
@@ -58,7 +80,22 @@ if (balanceSearch) {
  document.querySelectorAll('.balance-entry input').forEach(input => input.addEventListener('change',balanceFilter));
  balanceFilter();
 }
-document.querySelectorAll('.group-status').forEach(el=>{const poll=async()=>{try{const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;const s=await r.json();el.textContent=[s.Message,s.Policy,s.Controller].filter(Boolean).join(' · ');const group=el.closest('details');group.querySelector('.group-current').textContent=s.Name?'· Сейчас: '+s.Name:'· '+s.Message;const samples=new Map((s.Samples||[]).map(n=>[n.NodeID,n]));group.querySelectorAll('[data-group-node]').forEach(row=>{const n=samples.get(row.dataset.groupNode);row.classList.toggle('selected',Boolean(n?.Active));row.querySelector('.group-delay').textContent=n?.Checked&&n.Alive?n.DelayMS+' мс':'—';const stale=n?.Checked&&(Date.now()/1000-n.Checked>Number(el.dataset.interval)*3+15);row.querySelector('.group-node-status').textContent=!n?.Checked?'Не проверен':[(n.Active?'Выбран · ': '')+(stale?'Данные устарели':n.Alive?'Доступен':'Недоступен'),new Date(n.Checked*1000).toLocaleTimeString()].join(' · ');});}catch{el.textContent='Не удалось получить состояние группы';}};el.closest('details').addEventListener('group-updated',poll);poll();setInterval(poll,5000);});
+document.querySelectorAll('.group-status').forEach(el=>{
+ const poll=async()=>{try{
+  const r=await fetch('/balance-status?id='+encodeURIComponent(el.dataset.groupId),{cache:'no-store'});if(!r.ok)return;
+  const s=await r.json();el.textContent=[s.Policy,s.Controller||s.Message].filter(Boolean).join(' · ');el.title=s.Message||'';
+  const group=el.closest('details');group.querySelector('.group-current').textContent=s.Name?'Сейчас: '+s.Name:s.Message;
+  const samples=new Map((s.Samples||[]).map(n=>[n.NodeID,n]));
+  group.querySelectorAll('[data-group-node]').forEach(row=>{
+   const n=samples.get(row.dataset.groupNode),active=Boolean(n?.Active);row.classList.toggle('selected',active);
+   const delay=row.querySelector('.group-delay');delay.textContent=n?.Checked&&n.Alive?n.DelayMS+' мс':'—';delay.classList.toggle('health',Boolean(n?.Alive));delay.classList.toggle('good',Boolean(n?.Alive));
+   const stale=n?.Checked&&(Date.now()/1000-n.Checked>Number(el.dataset.interval)*3+15);
+   const state=row.querySelector('.group-node-status');state.textContent=!n?.Checked?'Не проверен':stale?'Данные устарели':n.Alive?'Доступен':'Недоступен';state.className='group-node-status health '+(stale?'warn':n?.Alive?'good':n?.Checked?'bad':'neutral');state.title=n?.Checked?'Проверено: '+new Date(n.Checked*1000).toLocaleString('ru-RU'):'';
+   const button=row.querySelector('[value="group-select"]');button.textContent=active?'Активен':'Выбрать';button.setAttribute('aria-pressed',String(active));button.classList.toggle('quiet',active);
+  });
+ }catch{el.textContent='Не удалось получить состояние группы';}};
+ el.closest('details').addEventListener('group-updated',poll);poll();setInterval(poll,5000);
+});
 const policySelector=document.querySelector('select[name=policy]');if(policySelector){const update=()=>document.querySelector('.threshold-fields').hidden=policySelector.value!=='threshold';policySelector.addEventListener('change',update);update();}
 const groupEdit=document.getElementById('group-edit');if(groupEdit){const members=groupEdit.dataset.members.trim().split(/\s+/);groupEdit.querySelectorAll("input[name=balance_node]").forEach(el=>el.checked=members.includes(el.value));balanceFilter();groupEdit.showModal();}
 
@@ -115,3 +152,10 @@ if(setupButton)setupButton.addEventListener('click',async()=>{
  }catch(error){progress.textContent=error.message;}
  finally{setupButton.disabled=false;}
 });
+
+document.querySelectorAll('dialog').forEach(dialog=>{
+ const field=dialog.querySelector('input:not([type=hidden]):not([type=checkbox]),textarea,select');if(field)field.setAttribute('autofocus','');
+ const button=document.createElement('button');button.type='button';button.className='dialog-close';button.setAttribute('aria-label','Закрыть окно');button.textContent='×';
+ button.onclick=()=>{const event=new Event('cancel',{cancelable:true});if(dialog.dispatchEvent(event))dialog.close();};dialog.prepend(button);
+});
+if(groupEdit)groupEdit.addEventListener('close',()=>{const url=new URL(location.href);url.searchParams.delete('group');history.replaceState(null,'',url);});
