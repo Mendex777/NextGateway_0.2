@@ -89,3 +89,29 @@ document.querySelectorAll('.group-status').forEach(status=>{
   finally{buttons.forEach(b=>b.disabled=false);}
  }));
 });
+
+const setupButton=document.getElementById('setup-components');
+if(setupButton)setupButton.addEventListener('click',async()=>{
+ const progress=document.getElementById('setup-progress');setupButton.disabled=true;
+ const installed=action=>document.querySelector('[data-component-action="'+action+'"]')?.dataset.state==='good';
+ const steps=[...(!installed('install')?[['install','Установка Xray']]:[]),...(!installed('dependencies')?[['dependencies','Установка компонентов шлюза']]:[]),...(!installed('geodata')?[['geodata','Загрузка geo-баз']]:[])];
+ try{
+  for(const [action,label] of steps){
+   progress.textContent=label+'…';
+   const request=await fetch('/action',{method:'POST',headers:{Accept:'application/json'},body:new URLSearchParams({action,tab:'status'})});
+   const queued=await request.json();if(!queued.ok)throw new Error(queued.message);
+   const deadline=Date.now()+600000;
+   while(true){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    const response=await fetch('/operation-status?action='+action+'&since='+encodeURIComponent(queued.since),{cache:'no-store'});
+    if(!response.ok)throw new Error('Не удалось получить состояние операции');
+    const result=await response.json();progress.textContent=label+' · '+result.Message;
+    if(result.Done){if(result.State!=='ok')throw new Error(result.Message);break;}
+    if(Date.now()>deadline)throw new Error('Операция ещё не завершена. Проверьте состояние на главной странице.');
+   }
+  }
+  progress.textContent='Компоненты готовы. Перейдите к восстановлению бекапа или настройке подписок.';
+  const refresh=document.createElement('a');refresh.href='/?tab=status&setup=1';refresh.textContent=' Обновить статусы';progress.append(refresh);
+ }catch(error){progress.textContent=error.message;}
+ finally{setupButton.disabled=false;}
+});

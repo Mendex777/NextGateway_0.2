@@ -53,6 +53,9 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	Components                                                            []ComponentStatus
+	Readiness                                                             string
+	Wizard                                                                bool
 	Groups                                                                []BalanceGroup
 	EditGroup                                                             *BalanceGroup
 	BalancePending                                                        bool
@@ -398,13 +401,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			msg = "Ошибка: " + e.Error()
 		}
-		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check") {
+		if r.Header.Get("Accept") == "application/json" && (r.FormValue("action") == "group-select" || r.FormValue("action") == "group-check" || r.FormValue("action") == "install" || r.FormValue("action") == "dependencies" || r.FormValue("action") == "geodata") {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			if e != nil {
 				w.WriteHeader(http.StatusBadRequest)
 			}
-			json.NewEncoder(w).Encode(map[string]any{"ok": e == nil, "message": msg})
+			json.NewEncoder(w).Encode(map[string]any{"ok": e == nil, "message": msg, "since": started})
 			return
 		}
 		redirect := "/?tab=" + url.QueryEscape(r.FormValue("tab")) + "&message=" + url.QueryEscape(msg)
@@ -462,6 +465,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		p.Routes = command("ip", "route")
 		p.Memory = command("free", "-h")
 		p.Uptime = command("uptime", "-p")
+		p.Components = componentOverview(p)
+		p.Readiness = overallReadiness(p)
+		p.Wizard = r.URL.Query().Get("setup") == "1" || (p.Runtime.ConfigHash == "" && setting("setup_skipped") != "1")
 		if b, e := os.ReadFile("/var/lib/ngpanel/install-status"); e == nil {
 			p.Install = string(b)
 		}

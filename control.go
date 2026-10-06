@@ -396,8 +396,20 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "panel-update-check", "panel-update-install", "panel-update-rollback":
 		err := requestPanelUpdate(strings.TrimPrefix(r.FormValue("action"), "panel-update-"))
 		return true, "Задание обновления панели поставлено в очередь", err
+	case "xray-update-check":
+		message, err := checkCoreUpdate()
+		return true, message, err
+	case "setup-skip":
+		return true, "Мастер скрыт. Все настройки доступны на главной странице.", saveSetting("setup_skipped", "1")
 	case "dns-diagnose":
 		message, err := diagnoseDNS()
+		saveSetting("dns_last_check_time", time.Now().UTC().Format(time.RFC3339))
+		saveSetting("dns_last_check", message)
+		ok := "0"
+		if err == nil {
+			ok = "1"
+		}
+		saveSetting("dns_last_check_ok", ok)
 		return true, message, err
 	case "device-discover":
 		e = discoverDevices()
