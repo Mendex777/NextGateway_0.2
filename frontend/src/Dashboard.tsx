@@ -1,5 +1,5 @@
 // Dashboard layout adapted from 3x-ui v3.9.0 (GPL-3.0); NGPanel metrics and actions.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   App,
@@ -14,6 +14,8 @@ import {
   Tooltip,
   Typography,
   Upload,
+  Grid,
+  theme,
 } from "antd";
 import {
   ArrowUpOutlined,
@@ -29,10 +31,10 @@ import {
   EyeOutlined,
   GlobalOutlined,
   HddOutlined,
-  PauseOutlined,
+  PoweroffOutlined,
+  DashboardOutlined,
+  SwapOutlined,
   ReloadOutlined,
-  SettingOutlined,
-  ThunderboltOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import { action, getJSON } from "./api";
@@ -40,11 +42,18 @@ import { Overview } from "./Pages";
 import type { Page } from "./types";
 import type { Run } from "./common";
 import "./dashboard.css";
+import Sparkline from "./reference/Sparkline";
+import VitalTile from "./reference/VitalTile";
+import ThroughputCard from "./reference/ThroughputCard";
+import ConnectionsCard from "./reference/ConnectionsCard";
+import { SizeFormatter, CPUFormatter, mean, peak } from "./reference/utils";
 
 interface Metrics {
   time: number;
   cpu: number;
   cores: number;
+  physicalCores: number;
+  cpuMHz: number;
   memory: number;
   memoryTotal: number;
   swap: number;
@@ -70,6 +79,8 @@ const empty: Metrics = {
   time: 0,
   cpu: 0,
   cores: 0,
+  physicalCores: 0,
+  cpuMHz: 0,
   memory: 0,
   memoryTotal: 0,
   swap: 0,
@@ -91,21 +102,16 @@ const empty: Metrics = {
   xrayThreads: 0,
   interface: "",
 };
-const bytes = (n: number) => {
-  let i = 0;
-  while (n >= 1024 && i < 4) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(i ? 2 : 0)} ${["Б", "КБ", "МБ", "ГБ", "ТБ"][i]}`;
-};
+const bytes = SizeFormatter.sizeFormat;
 const percent = (n: number, total: number) => (total ? (100 * n) / total : 0);
 const duration = (n: number) =>
-  n >= 86400
-    ? `${Math.floor(n / 86400)} д ${Math.floor((n % 86400) / 3600)} ч`
-    : n >= 3600
-      ? `${Math.floor(n / 3600)} ч ${Math.floor((n % 3600) / 60)} мин`
-      : `${Math.floor(n / 60)} мин`;
+  n < 60
+    ? n.toFixed(0) + "s"
+    : n < 3600
+      ? (n / 60).toFixed(0) + "m"
+      : n < 86400
+        ? (n / 3600).toFixed(0) + "h"
+        : (n / 86400).toFixed(0) + "d";
 async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   const input = document.createElement("textarea");
@@ -129,7 +135,7 @@ function download(text: string, name: string, type = "text/plain") {
 function Chart({
   data,
   second = [],
-  height = 62,
+  height = 140,
   label,
 }: {
   data: number[];
@@ -137,102 +143,23 @@ function Chart({
   height?: number;
   label: string;
 }) {
-  const max = Math.max(...data, ...second, 1);
-  const path = (values: number[]) =>
-    values
-      .map(
-        (v, i) =>
-          `${i ? "L" : "M"} ${(i * 600) / Math.max(values.length - 1, 1)} ${height - 8 - (v / max) * (height - 16)}`,
-      )
-      .join(" ");
+  const { token } = theme.useToken();
   return (
-    <svg
-      role="img"
-      aria-label={label}
-      className="ov-chart"
-      viewBox={`0 0 600 ${height}`}
-      preserveAspectRatio="none"
-      style={{ height }}
-    >
-      <title>{label}</title>
-      {height > 100 &&
-        [0.25, 0.5, 0.75].map((y) => (
-          <line
-            key={y}
-            x1="0"
-            x2="600"
-            y1={height * y}
-            y2={height * y}
-            stroke="currentColor"
-            opacity=".08"
-          />
-        ))}
-      {data.length > 1 && (
-        <>
-          <path
-            d={`${path(data)} L 600 ${height} L 0 ${height} Z`}
-            fill="#1677ff"
-            opacity=".12"
-          />
-          <path
-            d={path(data)}
-            fill="none"
-            stroke="#1677ff"
-            strokeWidth="1.6"
-            vectorEffect="non-scaling-stroke"
-          />
-          {second.length > 1 && (
-            <path
-              d={path(second)}
-              fill="none"
-              stroke="#8c8c8c"
-              strokeWidth="1.6"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </>
-      )}
-    </svg>
+    <Sparkline
+      data={data}
+      data2={second}
+      height={height}
+      stroke={token.colorPrimary}
+      stroke2={token.colorTextTertiary}
+      valueMax={null}
+      showTooltip
+      showLegend={false}
+      fillOpacity={0.24}
+      name1={label}
+      yFormatter={bytes}
+    />
   );
 }
-function Vital({
-  label,
-  icon,
-  value,
-  detail,
-  series,
-}: {
-  label: string;
-  icon: ReactNode;
-  value: number;
-  detail: string;
-  series: number[];
-}) {
-  const avg = series.length
-    ? series.reduce((a, b) => a + b, 0) / series.length
-    : 0;
-  return (
-    <Card hoverable className="ov-tile" styles={{ body: { padding: 0 } }}>
-      <div className="ov-tile-head">
-        <span className="ov-tile-icon">{icon}</span>
-        <span className="ov-kicker">{label}</span>
-      </div>
-      <div className="ov-tile-value">
-        <span className="ov-tile-number">{value.toFixed(1)}</span>
-        <span className="ov-tile-unit">%</span>
-      </div>
-      <div className="ov-tile-detail">{detail}</div>
-      <div className="ov-tile-foot">
-        <span>Среднее {avg.toFixed(1)}%</span>
-        <span>Пик {Math.max(...series, 0).toFixed(1)}%</span>
-      </div>
-      <div className="ov-tile-chart">
-        <Chart data={series} label={`${label}, история нагрузки`} />
-      </div>
-    </Card>
-  );
-}
-
 export default function Dashboard({
   p,
   run,
@@ -245,6 +172,8 @@ export default function Dashboard({
   reload: () => Promise<Page>;
 }) {
   const { message, modal } = App.useApp();
+  const { token } = theme.useToken();
+  const isMobile = !Grid.useBreakpoint().md;
   const [samples, setSamples] = useState<Metrics[]>([]),
     [failure, setFailure] = useState(""),
     [window, setWindow] = useState(""),
@@ -265,11 +194,9 @@ export default function Dashboard({
     let stopped = false;
     const load = async () => {
       try {
-        const next = await getJSON<Metrics>("/api/dashboard");
+        const history = await getJSON<Metrics[]>("/api/dashboard/history");
         if (!stopped) {
-          setSamples((old) =>
-            old.at(-1)?.time === next.time ? old : [...old.slice(-119), next],
-          );
+          setSamples(history);
           setFailure("");
         }
       } catch {
@@ -279,7 +206,7 @@ export default function Dashboard({
     void load();
     const timer = setInterval(() => {
       if (!document.hidden) void load();
-    }, 3000);
+    }, 2000);
     return () => {
       stopped = true;
       clearInterval(timer);
@@ -388,7 +315,7 @@ export default function Dashboard({
   const active = p.Service.trim() === "active";
   const version = p.Version.match(/\d+\.\d+\.\d+/)?.[0] || "не установлен";
   return (
-    <div className="index-page">
+    <div className="index-page is-dark">
       <div className="ov-page">
         <div className="ov-bar">
           <div className={"ov-state " + (active ? "ov-state-running" : "")}>
@@ -398,73 +325,85 @@ export default function Dashboard({
               v{version}
             </Button>
           </div>
-          <Button type="text" size="small" onClick={() => setWindow("update")}>
+          <button
+            type="button"
+            className="ov-panel-version ov-mono"
+            onClick={() => setWindow("update")}
+          >
             {p.PanelVersion}
-          </Button>
+          </button>
           {p.PanelUpdate.Available && <Tag color="blue">Обновление</Tag>}
           <div className="ov-bar-actions">
             <Button
+              size={isMobile ? "small" : "middle"}
+              color="primary"
+              variant="outlined"
+              aria-label={active ? "Перезапуск" : "Запустить"}
               icon={<ReloadOutlined />}
               onClick={() => (active ? control("restart") : doRun("start"))}
             >
-              {active ? "Перезапустить" : "Запустить"}
+              {isMobile ? undefined : active ? "Перезапуск" : "Запустить"}
             </Button>
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
-              icon={<PauseOutlined />}
+              aria-label="Стоп"
+              icon={<PoweroffOutlined />}
               onClick={() => control("stop")}
               disabled={!active}
             >
-              Остановить
+              {isMobile ? undefined : "Стоп"}
             </Button>
             <span className="ov-bar-sep" />
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
+              aria-label="Логи"
               icon={<BarsOutlined />}
               onClick={() => {
                 setWindow("logs");
                 doRun("logs");
               }}
             >
-              Логи
+              {isMobile ? undefined : "Логи"}
             </Button>
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
+              aria-label="Конфигурация"
               icon={<ControlOutlined />}
               onClick={() => void openConfig()}
             >
-              Конфигурация
+              {isMobile ? undefined : "Конфигурация"}
             </Button>
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
+              aria-label="Бэкап и восстановление"
               icon={<CloudServerOutlined />}
               onClick={() => setWindow("backup")}
             >
-              Бэкап
+              {isMobile ? undefined : "Бэкап и восстановление"}
             </Button>
             <span className="ov-bar-sep" />
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
+              aria-label="История системы"
               icon={<AreaChartOutlined />}
               onClick={() => setWindow("history")}
             >
-              История
+              {isMobile ? undefined : "История системы"}
             </Button>
             <Button
+              size={isMobile ? "small" : "middle"}
               type="text"
+              aria-label="Метрики Xray"
               icon={<ArrowUpOutlined />}
               onClick={() => setWindow("metrics")}
             >
-              Метрики Xray
+              {isMobile ? undefined : "Метрики Xray"}
             </Button>
-            <Tooltip title="Компоненты и мастер настройки шлюза">
-              <Button
-                type="text"
-                icon={<SettingOutlined />}
-                aria-label="Настройка шлюза"
-                onClick={() => setWindow("setup")}
-              />
-            </Tooltip>
           </div>
         </div>
         <hr className="ov-rule" />
@@ -474,118 +413,80 @@ export default function Dashboard({
         ) : (
           <>
             <div className="ov-vitals">
-              <Vital
-                label="CPU"
-                icon={<ThunderboltOutlined />}
-                value={m.cpu}
-                detail={`${m.cores} ${m.cores === 1 ? "ядро" : "ядер"}`}
-                series={series("cpu")}
+              <VitalTile
+                icon={<DashboardOutlined />}
+                label="ЦП"
+                percent={m.cpu}
+                statusColor={token.colorPrimary}
+                detail={`${CPUFormatter.cpuCoreFormat(m.physicalCores || m.cores)} / ${m.cores}T · ${CPUFormatter.cpuSpeedFormat(m.cpuMHz)}`}
+                footLeft={`Среднее ${mean(series("cpu")).toFixed(0)}%`}
+                footRight={`Пик ${peak(series("cpu")).toFixed(0)}%`}
+                data={series("cpu")}
+                isMobile={isMobile}
               />
-              <Vital
-                label="Память"
+              <VitalTile
                 icon={<DatabaseOutlined />}
-                value={percent(m.memory, m.memoryTotal)}
+                label="Память"
+                percent={percent(m.memory, m.memoryTotal)}
+                statusColor={token.colorPrimary}
                 detail={`${bytes(m.memory)} / ${bytes(m.memoryTotal)}`}
-                series={mem}
+                footLeft={`Среднее ${mean(mem).toFixed(0)}%`}
+                footRight={`Пик ${peak(mem).toFixed(0)}%`}
+                data={mem}
+                isMobile={isMobile}
               />
-              <Vital
-                label="Swap"
-                icon={<SwapIcon />}
-                value={percent(m.swap, m.swapTotal)}
+              <VitalTile
+                icon={<SwapOutlined />}
+                label="Подкачка"
+                percent={percent(m.swap, m.swapTotal)}
+                statusColor={token.colorPrimary}
                 detail={`${bytes(m.swap)} / ${bytes(m.swapTotal)}`}
-                series={swap}
+                footLeft={`Среднее ${mean(swap).toFixed(1)}%`}
+                footRight={`Пик ${peak(swap).toFixed(0)}%`}
+                data={swap}
+                isMobile={isMobile}
               />
-              <Vital
-                label="Диск"
+              <VitalTile
                 icon={<HddOutlined />}
-                value={percent(m.disk, m.diskTotal)}
+                label="Диск"
+                percent={percent(m.disk, m.diskTotal)}
+                statusColor={token.colorPrimary}
                 detail={`${bytes(m.disk)} / ${bytes(m.diskTotal)}`}
-                series={disk}
+                footLeft={`Свободно ${bytes(m.diskTotal - m.disk)}`}
+                footRight={`Среднее ${mean(disk).toFixed(1)}%`}
+                data={disk}
+                isMobile={isMobile}
               />
             </div>
             <div className="ov-mid">
-              <Card hoverable styles={{ body: { padding: 0 } }}>
-                <div className="ov-wide-head">
-                  <div>
-                    <div className="ov-kicker">Пропускная способность</div>
-                    <div className="ov-sub">
-                      Всего по интерфейсу {m.interface}
-                    </div>
-                  </div>
-                  <div className="ov-wide-legend">
-                    {[
-                      ["Отправка", m.upload, "#1677ff"],
-                      ["Приём", m.download, "#8c8c8c"],
-                    ].map(([label, value, color]) => (
-                      <div key={label}>
-                        <div className="ov-legend-label">
-                          <span
-                            className="ov-swatch"
-                            style={{ background: String(color) }}
-                          />
-                          {label}
-                        </div>
-                        <div className="ov-legend-num">
-                          {bytes(Number(value))}/с
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="ov-wide-chart">
-                  <Chart
-                    data={series("upload")}
-                    second={series("download")}
-                    height={186}
-                    label="Отправка и приём по интерфейсу ВМ"
-                  />
-                </div>
-                <div className="ov-wide-foot">
-                  {[
-                    ["Отправлено", bytes(m.sent)],
-                    ["Получено", bytes(m.received)],
-                    [
-                      "Среднее за окно",
-                      bytes(
-                        samples.reduce((n, s) => n + s.upload + s.download, 0) /
-                          Math.max(samples.length, 1),
-                      ) + "/с",
-                    ],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <div className="ov-kicker">{label}</div>
-                      <div className="ov-foot-value">{value}</div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              <Card hoverable styles={{ body: { padding: 0 } }}>
-                <div className="ov-wide-head ov-wide-head-stack">
-                  <div className="ov-kicker">Соединения</div>
-                  <div className="ov-conn-total">
-                    <span className="ov-tile-number">{m.tcp + m.udp}</span>
-                    <span className="ov-sub">открытых сокетов</span>
-                  </div>
-                </div>
-                <div className="ov-conn-legend">
-                  <div>
-                    <span className="ov-legend-label">TCP</span>
-                    <strong>{m.tcp}</strong>
-                  </div>
-                  <div>
-                    <span className="ov-legend-label">UDP</span>
-                    <strong>{m.udp}</strong>
-                  </div>
-                </div>
-                <div className="ov-wide-chart">
-                  <Chart
-                    data={series("tcp")}
-                    second={series("udp")}
-                    height={186}
-                    label="TCP и UDP сокеты ВМ"
-                  />
-                </div>
-              </Card>
+              <ThroughputCard
+                status={{
+                  netIO: { up: m.upload, down: m.download },
+                  netTraffic: { sent: m.sent, recv: m.received },
+                  tcpCount: m.tcp,
+                  udpCount: m.udp,
+                }}
+                up={series("upload")}
+                down={series("download")}
+                labels={samples.map((s) =>
+                  new Date(s.time).toLocaleTimeString("ru-RU"),
+                )}
+                isMobile={isMobile}
+              />
+              <ConnectionsCard
+                status={{
+                  netIO: { up: m.upload, down: m.download },
+                  netTraffic: { sent: m.sent, recv: m.received },
+                  tcpCount: m.tcp,
+                  udpCount: m.udp,
+                }}
+                tcp={series("tcp")}
+                udp={series("udp")}
+                labels={samples.map((s) =>
+                  new Date(s.time).toLocaleTimeString("ru-RU"),
+                )}
+                isMobile={isMobile}
+              />
             </div>
             <Card hoverable styles={{ body: { padding: 0 } }}>
               <div className="ov-strip-grid">
@@ -630,7 +531,7 @@ export default function Dashboard({
                 <div className="ov-strip-cell">
                   <div className="ov-kicker ov-kicker-icon">
                     <GlobalOutlined />
-                    Адрес шлюза
+                    IP-адреса сервера
                     <Button
                       size="small"
                       type="text"
@@ -834,12 +735,12 @@ export default function Dashboard({
         footer={null}
       >
         <Typography.Paragraph type="secondary">
-          Последние {samples.length} измерений с момента открытия дашборда.
+          Последние {samples.length} измерений системы.
         </Typography.Paragraph>
         {[
-          ["CPU", series("cpu")],
+          ["ЦП", series("cpu")],
           ["Память", mem],
-          ["Swap", swap],
+          ["Подкачка", swap],
           ["Диск", disk],
         ].map(([label, data]) => (
           <Card
@@ -931,7 +832,4 @@ export default function Dashboard({
       </Modal>
     </div>
   );
-}
-function SwapIcon() {
-  return <ControlOutlined />;
 }

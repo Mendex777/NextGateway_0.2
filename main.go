@@ -619,6 +619,7 @@ func main() {
 		log.Fatal(e)
 	}
 	log.Printf("NGPanel listening on %s", addr)
+	startDashboardSampler()
 	if os.Getenv("NG_REVIEW") != "1" {
 		go subscriptionWorker()
 		go groupWorker()

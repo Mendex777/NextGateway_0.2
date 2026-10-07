@@ -16,29 +16,31 @@ import (
 
 // Host counters are sampled once per second, shared by all browser sessions.
 type dashboardMetrics struct {
-	Time        int64   `json:"time"`
-	CPU         float64 `json:"cpu"`
-	Cores       int     `json:"cores"`
-	Memory      uint64  `json:"memory"`
-	MemoryTotal uint64  `json:"memoryTotal"`
-	Swap        uint64  `json:"swap"`
-	SwapTotal   uint64  `json:"swapTotal"`
-	Disk        uint64  `json:"disk"`
-	DiskTotal   uint64  `json:"diskTotal"`
-	Upload      float64 `json:"upload"`
-	Download    float64 `json:"download"`
-	Sent        uint64  `json:"sent"`
-	Received    uint64  `json:"received"`
-	TCP         int     `json:"tcp"`
-	UDP         int     `json:"udp"`
-	Uptime      float64 `json:"uptime"`
-	XrayUptime  float64 `json:"xrayUptime"`
-	PanelMemory uint64  `json:"panelMemory"`
-	Threads     int     `json:"threads"`
-	XrayPID     int     `json:"xrayPID"`
-	XrayMemory  uint64  `json:"xrayMemory"`
-	XrayThreads int     `json:"xrayThreads"`
-	Interface   string  `json:"interface"`
+	Time          int64   `json:"time"`
+	CPU           float64 `json:"cpu"`
+	Cores         int     `json:"cores"`
+	PhysicalCores int     `json:"physicalCores"`
+	CPUMHz        float64 `json:"cpuMHz"`
+	Memory        uint64  `json:"memory"`
+	MemoryTotal   uint64  `json:"memoryTotal"`
+	Swap          uint64  `json:"swap"`
+	SwapTotal     uint64  `json:"swapTotal"`
+	Disk          uint64  `json:"disk"`
+	DiskTotal     uint64  `json:"diskTotal"`
+	Upload        float64 `json:"upload"`
+	Download      float64 `json:"download"`
+	Sent          uint64  `json:"sent"`
+	Received      uint64  `json:"received"`
+	TCP           int     `json:"tcp"`
+	UDP           int     `json:"udp"`
+	Uptime        float64 `json:"uptime"`
+	XrayUptime    float64 `json:"xrayUptime"`
+	PanelMemory   uint64  `json:"panelMemory"`
+	Threads       int     `json:"threads"`
+	XrayPID       int     `json:"xrayPID"`
+	XrayMemory    uint64  `json:"xrayMemory"`
+	XrayThreads   int     `json:"xrayThreads"`
+	Interface     string  `json:"interface"`
 }
 
 var dashboardCache struct {
@@ -46,6 +48,62 @@ var dashboardCache struct {
 	at          time.Time
 	total, idle uint64
 	sample      dashboardMetrics
+}
+
+var dashboardHistory struct {
+	sync.RWMutex
+	samples []dashboardMetrics
+}
+var dashboardSampler sync.Once
+
+func recordDashboardSample(m dashboardMetrics) {
+	dashboardHistory.Lock()
+	defer dashboardHistory.Unlock()
+	if n := len(dashboardHistory.samples); n > 0 && dashboardHistory.samples[n-1].Time == m.Time {
+		return
+	}
+	dashboardHistory.samples = append(dashboardHistory.samples, m)
+	if len(dashboardHistory.samples) > 72 {
+		dashboardHistory.samples = append([]dashboardMetrics(nil), dashboardHistory.samples[len(dashboardHistory.samples)-72:]...)
+	}
+}
+func readDashboardHistory() []dashboardMetrics {
+	dashboardHistory.RLock()
+	defer dashboardHistory.RUnlock()
+	return append([]dashboardMetrics{}, dashboardHistory.samples...)
+}
+func startDashboardSampler() {
+	dashboardSampler.Do(func() {
+		recordDashboardSample(hostDashboard())
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				recordDashboardSample(hostDashboard())
+			}
+		}()
+	})
+}
+
+func cpuTopology(raw string) (int, float64) {
+	cores := map[string]bool{}
+	var mhz float64
+	for _, block := range strings.Split(raw, "\n\n") {
+		fields := map[string]string{}
+		for _, line := range strings.Split(block, "\n") {
+			k, v, ok := strings.Cut(line, ":")
+			if ok {
+				fields[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			}
+		}
+		if core, ok := fields["core id"]; ok {
+			cores[fields["physical id"]+":"+core] = true
+		}
+		if mhz == 0 {
+			mhz, _ = strconv.ParseFloat(fields["cpu MHz"], 64)
+		}
+	}
+	return len(cores), mhz
 }
 
 func procNumbers(path string) map[string]uint64 {
@@ -86,6 +144,8 @@ func hostDashboard() dashboardMetrics {
 		return dashboardCache.sample
 	}
 	m := dashboardMetrics{Time: now.UnixMilli(), Cores: runtime.NumCPU()}
+	cpuInfo, _ := os.ReadFile("/proc/cpuinfo")
+	m.PhysicalCores, m.CPUMHz = cpuTopology(string(cpuInfo))
 	raw, _ := os.ReadFile("/proc/stat")
 	lines := strings.Split(string(raw), "\n")
 	var total, idle uint64

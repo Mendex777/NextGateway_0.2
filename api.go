@@ -37,6 +37,10 @@ func newRouter() http.Handler {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, hostDashboard())
 	})
+	router.GET("/api/dashboard/history", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(200, readDashboardHistory())
+	})
 	router.GET("/api/dashboard/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		raw, err := dashboardConfig()

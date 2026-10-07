@@ -20,6 +20,29 @@ func TestDashboardParsers(t *testing.T) {
 		t.Fatal("socket count includes header")
 	}
 }
+func TestDashboardHistoryWindow(t *testing.T) {
+	dashboardHistory.Lock()
+	dashboardHistory.samples = nil
+	dashboardHistory.Unlock()
+	for i := int64(1); i <= 80; i++ {
+		recordDashboardSample(dashboardMetrics{Time: i, CPU: float64(i)})
+	}
+	values := readDashboardHistory()
+	if len(values) != 72 || values[0].Time != 9 || values[71].Time != 80 {
+		t.Fatal("history window lost order or bound")
+	}
+	recordDashboardSample(dashboardMetrics{Time: 80})
+	values[0].Time = 0
+	if next := readDashboardHistory(); len(next) != 72 || next[0].Time != 9 {
+		t.Fatal("duplicate or aliased history")
+	}
+}
+func TestCPUTopology(t *testing.T) {
+	cores, mhz := cpuTopology("physical id : 0\ncore id : 0\ncpu MHz : 2000\n\nphysical id : 0\ncore id : 0\n\nphysical id : 0\ncore id : 1\n")
+	if cores != 2 || mhz != 2000 {
+		t.Fatal("CPU cores confused with threads")
+	}
+}
 func TestDashboardMetricsAreReadOnlyAndCached(t *testing.T) {
 	first := hostDashboard()
 	second := hostDashboard()
