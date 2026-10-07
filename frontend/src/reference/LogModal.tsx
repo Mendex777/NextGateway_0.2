@@ -1,0 +1,224 @@
+// Adapted from 3x-ui v3.9.0 (GPL-3.0); NGPanel journal adapter.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Grid, Alert } from 'antd';
+import { Button, Checkbox, Form, Modal, Select, Space } from 'antd';
+import { DownloadOutlined, SyncOutlined } from '@ant-design/icons';
+
+import { getJSON, action } from '../api';
+const activateOnKey = (fn: () => void) => (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
+
+import { parseLogLine } from './logParse';
+import './LogModal.css';
+
+interface LogModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const AUTO_UPDATE_INTERVAL = 5000;
+
+export default function LogModal({ open, onClose }: LogModalProps) {
+  const t = (key: string) => ({ 'pages.index.logs': 'Логи', refresh: 'Обновить', download: 'Скачать', 'pages.index.autoUpdate': 'Автообновление', 'pages.index.logLevelDebug': 'Отладка', 'pages.index.logLevelInfo': 'Информация', 'pages.index.logLevelNotice': 'Уведомление', 'pages.index.logLevelWarning': 'Предупреждение', 'pages.index.logLevelError': 'Ошибка' }[key] || key);
+  const isMobile = !Grid.useBreakpoint().md;
+  const [rows, setRows] = useState('20');
+  const [level, setLevel] = useState('info');
+  const [syslog, setSyslog] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [error, setError] = useState('');
+
+  const runRefresh = useCallback(async () => {
+    try {
+      const request = await action('logs', 'status').catch(() => null);
+      if (request?.operation) {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const status = await getJSON<{Done:boolean;State:string;Message:string}>('/operation-status?' + new URLSearchParams({action:'logs', since:request.since}));
+          if (status.Done) {
+            if (status.State === 'error') throw new Error(status.Message);
+            break;
+          }
+          if (attempt === 29) throw new Error('Обновление журнала ещё выполняется. Повторите запрос.');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      const msg = await getJSON<{text:string}>('/api/dashboard/logs?service=' + (syslog ? 'system' : 'panel'));
+      const rank = ['debug','info','notice','warning','err'].indexOf(level);
+      setLogs(msg.text.split('\n').sort((a,b) => {
+        const timestamp = (line:string) => { const stamp = parseLogLine(line).stamp; const date = Date.parse(stamp + ' ' + new Date().getFullYear()); return Number.isFinite(date) ? date : 0; };
+        return timestamp(a) - timestamp(b);
+      }).filter(line => {
+        if (!line.trim()) return false;
+        const parsed = parseLogLine(line);
+        const severity = ['DEBUG','INFO','NOTICE','WARNING','ERROR'].indexOf(parsed.levelText);
+        return severity < 0 || severity >= rank;
+      }).slice(-Number(rows)));
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Журнал недоступен');
+    } finally {
+      setLoading(false);
+    }
+  }, [rows, level, syslog]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    void runRefresh();
+  }, [runRefresh]);
+
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+
+  // The spinner is raised during render so the fetch effect stays side-effect
+  // free until its response lands.
+  const refreshKey = open ? `${rows}\u0000${level}\u0000${syslog}` : null;
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  if (refreshKey !== loadingKey) {
+    setLoadingKey(refreshKey);
+    if (refreshKey) setLoading(true);
+  }
+
+  useEffect(() => {
+    if (open) void runRefresh();
+  }, [open, runRefresh]);
+
+  useEffect(() => {
+    if (!open || !autoUpdate) return;
+    const id = setInterval(() => refreshRef.current(), AUTO_UPDATE_INTERVAL);
+    return () => clearInterval(id);
+  }, [open, autoUpdate]);
+
+  const parsedLogs = useMemo(() => logs.map(parseLogLine), [logs]);
+
+  function download() {
+    const url = URL.createObjectURL(new Blob([logs.join('\n')], {type:'text/plain;charset=utf-8'}));
+    const link = document.createElement('a'); link.href = url; link.download = 'ngpanel.log'; link.click(); URL.revokeObjectURL(url);
+  }
+
+  const titleNode = (
+    <>
+      {t('pages.index.logs')}
+      <SyncOutlined
+        spin={loading}
+        className="reload-icon"
+        role="button"
+        tabIndex={0}
+        aria-label={t('refresh')}
+        onClick={refresh}
+        onKeyDown={activateOnKey(refresh)}
+      />
+    </>
+  );
+
+  return (
+    <Modal
+      open={open}
+      footer={null}
+      width={isMobile ? '100vw' : 800}
+      style={isMobile ? { top: 0, paddingBottom: 0, maxWidth: '100vw' } : undefined}
+      className={isMobile ? 'logmodal-mobile' : undefined}
+      onCancel={onClose}
+      title={titleNode}
+    >
+      <Form layout="inline" className="log-toolbar">
+        <Form.Item>
+          <Space.Compact>
+            <Select
+              value={rows}
+              size="small"
+              style={{ width: 100 }}
+              onChange={setRows}
+              options={[
+                { value: '20', label: '20' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+                { value: '500', label: '500' },
+                { value: '1000', label: '1000' },
+              ]}
+            />
+            <Select
+              value={level}
+              size="small"
+              style={{ minWidth: 95 }}
+              onChange={setLevel}
+              options={[
+                { value: 'debug', label: t('pages.index.logLevelDebug') },
+                { value: 'info', label: t('pages.index.logLevelInfo') },
+                { value: 'notice', label: t('pages.index.logLevelNotice') },
+                { value: 'warning', label: t('pages.index.logLevelWarning') },
+                { value: 'err', label: t('pages.index.logLevelError') },
+              ]}
+            />
+          </Space.Compact>
+        </Form.Item>
+        <Form.Item>
+          <Checkbox checked={syslog} onChange={(e) => setSyslog(e.target.checked)}>
+            SysLog
+          </Checkbox>
+          <Checkbox checked={autoUpdate} onChange={(e) => setAutoUpdate(e.target.checked)}>
+            {t('pages.index.autoUpdate')}
+          </Checkbox>
+        </Form.Item>
+        <Form.Item className="download-item">
+          <Button
+            type="primary"
+            onClick={download}
+            icon={<DownloadOutlined />}
+            aria-label={t('download')}
+          />
+        </Form.Item>
+      </Form>
+
+      {error && <Alert type="error" title={error} />}
+      <div className={`log-container ${isMobile ? 'log-container-mobile' : ''}`}>
+        {parsedLogs.length === 0 ? (
+          <div className="log-empty">No Record...</div>
+        ) : isMobile ? (
+          parsedLogs.map((log, idx) => (
+            <div key={idx} className="log-card">
+              <div className="log-card-head">
+                {log.stamp && (
+                  <span className="log-time">
+                    {log.time && <span>{log.time}</span>}
+                    {log.time && log.date ? ' ' : ''}
+                    {log.date && <span className="log-date">{log.date}</span>}
+                  </span>
+                )}
+                {log.levelText && (
+                  <span className={`log-level-badge ${log.levelClass}`}>{log.levelText}</span>
+                )}
+              </div>
+              {(log.body || log.service) && (
+                <div className="log-body">
+                  {log.service && <b>{log.service}</b>}
+                  {log.service && log.body ? ' ' : ''}
+                  {log.body && <span className="log-body-text">{log.body}</span>}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          parsedLogs.map((log, idx) => (
+            <div key={idx} className="log-line">
+              {log.stamp && <span className="log-stamp">{log.stamp}</span>}
+              {log.stamp && log.levelText ? ' ' : ''}
+              {log.levelText && (
+                <span className={`log-level ${log.levelClass}`}>{log.levelText}</span>
+              )}
+              {(log.body || log.service) && (
+                <>
+                  {(log.stamp || log.levelText) && <span> - </span>}
+                  {log.service && <b>{log.service}</b>}
+                  {log.service && log.body ? ' ' : ''}
+                  <span>{log.body}</span>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </Modal>
+  );
+}

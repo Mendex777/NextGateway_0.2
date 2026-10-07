@@ -7,7 +7,6 @@ import {
   Card,
   Checkbox,
   Modal,
-  Select,
   Space,
   Spin,
   Tag,
@@ -42,6 +41,7 @@ import { Overview } from "./Pages";
 import type { Page } from "./types";
 import type { Run } from "./common";
 import "./dashboard.css";
+import LogModal from "./reference/LogModal";
 import Sparkline from "./reference/Sparkline";
 import VitalTile from "./reference/VitalTile";
 import ThroughputCard from "./reference/ThroughputCard";
@@ -181,15 +181,7 @@ export default function Dashboard({
     [config, setConfig] = useState(""),
     [configError, setConfigError] = useState(""),
     [keepMachine, setKeepMachine] = useState(true),
-    [restoring, setRestoring] = useState(false),
-    [log, setLog] = useState(""),
-    [logError, setLogError] = useState(""),
-    [logDate, setLogDate] = useState(""),
-    [rows, setRows] = useState(20),
-    [level, setLevel] = useState("all"),
-    [panelLog, setPanelLog] = useState(false),
-    [auto, setAuto] = useState(false),
-    [logBusy, setLogBusy] = useState(false);
+    [restoring, setRestoring] = useState(false);
   useEffect(() => {
     let stopped = false;
     const load = async () => {
@@ -217,39 +209,6 @@ export default function Dashboard({
   const mem = samples.map((s) => percent(s.memory, s.memoryTotal)),
     swap = samples.map((s) => percent(s.swap, s.swapTotal)),
     disk = samples.map((s) => percent(s.disk, s.diskTotal));
-  const loadLog = async () => {
-    setLogBusy(true);
-    try {
-      const s = await getJSON<{ text: string; updated: string }>(
-        "/api/dashboard/logs?service=" + (panelLog ? "panel" : "xray"),
-      );
-      setLog(s.text);
-      setLogDate(s.updated);
-      setLogError("");
-    } catch {
-      setLogError("Журнал недоступен");
-    } finally {
-      setLogBusy(false);
-    }
-  };
-  useEffect(() => {
-    if (window !== "logs") return;
-    void loadLog();
-    const timer = setInterval(
-      () => {
-        if (!document.hidden) void loadLog();
-      },
-      auto ? 5000 : 1500,
-    );
-    return () => clearInterval(timer);
-  }, [window, panelLog, auto]);
-  useEffect(() => {
-    if (window !== "logs" || !auto) return;
-    const timer = setInterval(() => {
-      if (!document.hidden) void action("logs", "status").catch(() => {});
-    }, 10000);
-    return () => clearInterval(timer);
-  }, [window, auto]);
   const openConfig = async () => {
     setWindow("config");
     setConfig("");
@@ -305,13 +264,6 @@ export default function Dashboard({
     });
     return false;
   };
-  const filtered = log
-    .split("\n")
-    .filter(
-      (line) =>
-        line.trim() && (level === "all" || line.toLowerCase().includes(level)),
-    )
-    .slice(-rows);
   const active = p.Service.trim() === "active";
   const version = p.Version.match(/\d+\.\d+\.\d+/)?.[0] || "не установлен";
   return (
@@ -362,7 +314,7 @@ export default function Dashboard({
               icon={<BarsOutlined />}
               onClick={() => {
                 setWindow("logs");
-                doRun("logs");
+
               }}
             >
               {isMobile ? undefined : "Логи"}
@@ -648,85 +600,7 @@ export default function Dashboard({
           <Spin />
         )}
       </Modal>
-      <Modal
-        open={window === "logs"}
-        onCancel={() => setWindow("")}
-        footer={null}
-        title={
-          <Space>
-            Логи
-            <Button
-              type="text"
-              size="small"
-              aria-label="Обновить журналы"
-              icon={<ReloadOutlined spin={logBusy} />}
-              onClick={() => doRun("logs")}
-            />
-          </Space>
-        }
-        width={800}
-      >
-        <Space wrap className="dash-log-toolbar">
-          <Select
-            value={rows}
-            onChange={setRows}
-            options={[20, 50, 100, 500, 1000].map((value) => ({
-              value,
-              label: String(value),
-            }))}
-          />
-          <Select
-            value={level}
-            onChange={setLevel}
-            options={[
-              { value: "all", label: "Все уровни" },
-              ...["debug", "info", "warning", "error"].map((value) => ({
-                value,
-                label: value,
-              })),
-            ]}
-          />
-          <Checkbox
-            checked={panelLog}
-            onChange={(e) => setPanelLog(e.target.checked)}
-          >
-            Панель
-          </Checkbox>
-          <Checkbox checked={auto} onChange={(e) => setAuto(e.target.checked)}>
-            Автообновление
-          </Checkbox>
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            aria-label="Скачать журнал"
-            onClick={() =>
-              download(
-                filtered.join("\n"),
-                panelLog ? "ngpanel.log" : "xray.log",
-              )
-            }
-          />
-        </Space>
-        {logError && <Alert type="error" title={logError} />}
-        <div className="dash-log-container">
-          {filtered.length ? (
-            filtered.map((line, i) => (
-              <div className="dash-log-line" key={i}>
-                {line}
-              </div>
-            ))
-          ) : (
-            <div className="dash-secondary">
-              Записей пока нет. Нажмите обновить журналы.
-            </div>
-          )}
-        </div>
-        {logDate && (
-          <div className="dash-secondary">
-            Обновлено: {new Date(logDate).toLocaleString("ru-RU")}
-          </div>
-        )}
-      </Modal>
+      <LogModal open={window === "logs"} onClose={() => setWindow("")} />
       <Modal
         open={window === "history"}
         onCancel={() => setWindow("")}

@@ -27,7 +27,7 @@ func newRouter() http.Handler {
 	router.GET("/api/page", func(c *gin.Context) {
 		tab := c.Query("tab")
 		if tab != "" && tab != "status" && tab != "subscriptions" && tab != "devices" && tab != "routing" && tab != "gateway" && tab != "diagnostics" && tab != "backup" {
-			c.JSON(400, gin.H{"error": "Неизвестная страница"})
+			c.JSON(400, gin.H{"error": "РќРµРёР·РІРµСЃС‚РЅР°СЏ СЃС‚СЂР°РЅРёС†Р°"})
 			return
 		}
 		c.Header("Cache-Control", "no-store")
@@ -45,13 +45,19 @@ func newRouter() http.Handler {
 		c.Header("Cache-Control", "no-store")
 		raw, err := dashboardConfig()
 		if err != nil {
-			c.JSON(404, gin.H{"error": "Применённая конфигурация ещё не создана или недоступна"})
+			c.JSON(404, gin.H{"error": "РџСЂРёРјРµРЅС‘РЅРЅР°СЏ РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ РµС‰С‘ РЅРµ СЃРѕР·РґР°РЅР° РёР»Рё РЅРµРґРѕСЃС‚СѓРїРЅР°"})
 			return
 		}
 		c.Data(200, "application/json", raw)
 	})
 	router.GET("/api/dashboard/logs", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
+        if c.Query("service") == "system" {
+            panel, _ := os.ReadFile(filepath.Join(stateDir(), "panel-log"))
+            xray, _ := os.ReadFile(filepath.Join(stateDir(), "xray-log"))
+            c.JSON(200, gin.H{"text": string(panel) + "\n" + string(xray)})
+            return
+        }
 		name := "xray-log"
 		if c.Query("service") == "panel" {
 			name = "panel-log"
@@ -68,7 +74,7 @@ func newRouter() http.Handler {
 		if os.Getenv("NG_REVIEW") == "1" {
 			action := c.PostForm("action")
 			if operationKind(action) != "" || strings.Contains("|group-select|node-probe|source-probe|group-check|device-discover|dns-diagnose|xray-update-check|", "|"+action+"|") {
-				c.JSON(403, gin.H{"ok": false, "message": "Проверка интерфейса: действия с рабочими службами отключены"})
+				c.JSON(403, gin.H{"ok": false, "message": "РџСЂРѕРІРµСЂРєР° РёРЅС‚РµСЂС„РµР№СЃР°: РґРµР№СЃС‚РІРёСЏ СЃ СЂР°Р±РѕС‡РёРјРё СЃР»СѓР¶Р±Р°РјРё РѕС‚РєР»СЋС‡РµРЅС‹"})
 				return
 			}
 		}
