@@ -12,7 +12,7 @@ import {
 } from "antd";
 import { useState } from "react";
 import { MoreOutlined, LoadingOutlined, CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
-import type { Page, Values, Node } from "./types";
+import type { Page, Values, Node, Probe } from "./types";
 export type Run = (name: string, values?: Values) => Promise<void>;
 export const date = (value: string) =>
   value ? new Date(value).toLocaleString("ru-RU") : "—";
@@ -52,20 +52,21 @@ export function Target({
     />
   );
 }
-export function NodeLatency({ node }: { node: Node }) {
-  if (node.Probe?.State === "running") return <LoadingOutlined spin aria-label="Проверяется" style={{ color: "var(--ng-accent)" }} />;
-  if (!node.Probe?.State) return <Typography.Text type="secondary">—</Typography.Text>;
+export function NodeLatency({ node }: { node: Node }) { return <ProbeLatency probe={node.Probe} />; }
+export function ProbeLatency({ probe }: { probe?: Probe }) {
+  if (probe?.State === "running") return <LoadingOutlined spin aria-label="Проверяется" style={{ color: "var(--ng-accent)" }} />;
+  if (!probe?.State) return <Typography.Text type="secondary">—</Typography.Text>;
   return (
-    <Tooltip title={(node.Probe?.Mode ? ({ tcp: "TCP", http: "HTTP", real: "Реальная задержка" }[node.Probe.Mode] || node.Probe.Mode) + ": " : "") + (node.Probe?.Message || "")}>
-      <span className={node.Probe.State === "ok" ? "probe-pill probe-ok" : "probe-pill probe-fail"}>
-        {node.Probe.State === "ok" ? <CheckCircleFilled /> : <CloseCircleFilled />}
-        {node.Probe?.State === "ok"
-          ? node.Probe.HTTPSMS + " мс"
-          : node.Probe?.State === "running"
+    <Tooltip title={(probe?.Mode ? ({ tcp: "TCP", http: "HTTP", real: "Реальная задержка" }[probe.Mode] || probe.Mode) + ": " : "") + (probe?.Message || "")}>
+      <span className={probe.State === "ok" ? "probe-pill probe-ok" : "probe-pill probe-fail"}>
+        {probe.State === "ok" ? <CheckCircleFilled /> : <CloseCircleFilled />}
+        {probe?.State === "ok"
+          ? probe.HTTPSMS + " мс"
+          : probe?.State === "running"
             ? "Проверка…"
-            : node.Probe?.State === "error"
+            : probe?.State === "error"
               ? "Ошибка"
-              : node.Probe?.State === "unsupported" ? "Неприменимо" : "—"}
+              : probe?.State === "unsupported" ? "Неприменимо" : "—"}
       </span>
     </Tooltip>
   );

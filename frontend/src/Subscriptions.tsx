@@ -39,6 +39,7 @@ import {
   Editor,
   JsonDetails,
   NodeLatency,
+  ProbeLatency,
   required,
   type Run,
 } from "./common";
@@ -187,6 +188,10 @@ export default function Subscriptions({
           .includes(search.toLocaleLowerCase()),
       )
       .map((n) => ({ ...n, Probe: probes[n.ID] }));
+  const sampleProbe = (sample?: GroupStatus["Samples"][number]): Probe | undefined => sample?.Checked ? {
+    State: sample.Alive ? "ok" : "error", HTTPSMS: sample.DelayMS, Mode: "real",
+    Checked: String(sample.Checked), Message: "Фоновая проверка группы",
+  } : undefined;
   const table = (nodes: Node[], g?: Group, scope = "") => (
     <Table
       className="node-table outbound-nodes"
@@ -201,7 +206,7 @@ export default function Subscriptions({
         hideOnSinglePage: true,
       }}
       scroll={{ x: 1150 }}
-      dataSource={filtered(nodes, scope)}
+      dataSource={filtered(nodes, scope).map(n => g ? { ...n, Probe: n.Probe || sampleProbe(status[g.id]?.Samples?.find(sample => sample.NodeID === String(n.ID))) } : n)}
       columns={[
         {
           title: "#",
@@ -557,7 +562,7 @@ export default function Subscriptions({
             { title: "Подключения", width: 115, dataIndex: "count" },
             { title: section === "groups" ? "Активный узел" : "Обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}><FlagText text={item.state} /></Typography.Text> },
             ...(section === "groups" ? [
-              { title: "Задержка", width: 100, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => item.latency ? <Tag color={item.latency.Alive ? "green" : "red"}>{item.latency.Alive ? item.latency.DelayMS + " мс" : "Недоступен"}</Tag> : "—" },
+              { title: "Задержка", width: 100, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => <ProbeLatency probe={sampleProbe(item.latency)} /> },
               { title: "Переключение", width: 170, dataIndex: "mode" },
             ] : []),
             { title: "Действия", width: 95, render: (_, item) => item.extra },

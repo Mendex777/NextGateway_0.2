@@ -177,7 +177,7 @@ export interface GroupStatus {
     NodeID: string;
     Alive: boolean;
     DelayMS: number;
-    Checked: string;
+    Checked: number;
   }[];
   Tag: string;
 }
