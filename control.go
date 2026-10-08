@@ -70,7 +70,7 @@ func allNodes() []Node {
 	for _, id := range groupNodeIDs() {
 		members[id] = true
 	}
-	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id ORDER BY n.source_id,COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='node_order:' || n.id),2147483647),n.id")
+	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri,COALESCE(d.value,'0')='1' FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id LEFT JOIN settings d ON d.key='source_disabled:' || n.source_id ORDER BY n.source_id,COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='node_order:' || n.id),2147483647),n.id")
 	if e != nil {
 		return nil
 	}
@@ -79,13 +79,14 @@ func allNodes() []Node {
 	for rows.Next() {
 		var n Node
 		var probe, raw string
-		if rows.Scan(&n.ID, &n.SourceID, &n.Name, &n.Host, &n.Port, &n.Transport, &n.Security, &probe, &raw) == nil {
+		if rows.Scan(&n.ID, &n.SourceID, &n.Name, &n.Host, &n.Port, &n.Transport, &n.Security, &probe, &raw, &n.Disabled) == nil {
 			json.Unmarshal([]byte(probe), &n.Probe)
 			fillNodeDetails(&n, raw)
 			n.BalanceMember = members[strconv.Itoa(n.ID)]
 			out = append(out, n)
 		}
 	}
+	rows.Close()
 	return out
 }
 func allRules() []Rule {
@@ -216,9 +217,12 @@ func buildConfig() (map[string]any, error) {
 	if !validIPv4(dns) {
 		return nil, fmt.Errorf("DNS должен быть IPv4-адресом")
 	}
-	mode := setting("default_route")
+	mode := effectiveTarget(setting("default_route"))
 	rules := allRules()
-	needProxy := mode == "proxy" || setting("dns_mode") == "proxy"
+	for i := range rules {
+		rules[i].Target = effectiveTarget(rules[i].Target)
+	}
+	needProxy := mode == "proxy" || setting("dns_mode") == "proxy" && effectiveTarget("proxy") != "block"
 	for _, r := range rules {
 		if r.Disabled {
 			continue
@@ -309,6 +313,15 @@ func enqueue(action string, config map[string]any) error {
 	jobLock.Lock()
 	defer jobLock.Unlock()
 	j := Job{Groups: balanceGroups(), Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
+	for i := range j.Groups {
+		active := []string{}
+		for _, id := range j.Groups[i].Nodes {
+			if !nodeDisabled(id) {
+				active = append(active, id)
+			}
+		}
+		j.Groups[i].Nodes = active
+	}
 	if action == "network" || (action == "apply" && j.Gateway) {
 		if e := saveNetwork(j.Network); e != nil {
 			return e
@@ -488,7 +501,12 @@ func controlAction(r *http.Request) (bool, string, error) {
 			}
 		}
 		e = tx.Commit()
+	case "source-toggle":
+		e = setSourceEnabled(r.FormValue("id"), r.FormValue("enabled") == "1")
 	case "select-node":
+		if nodeDisabled(r.FormValue("id")) {
+			return true, "", fmt.Errorf("Подписка отключена")
+		}
 		var raw string
 		e = db.QueryRow("SELECT uri FROM nodes WHERE id=?", r.FormValue("id")).Scan(&raw)
 		if e != nil {

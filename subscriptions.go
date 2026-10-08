@@ -99,7 +99,7 @@ func subscriptionWorker() {
 }
 func refreshDueSources(now time.Time) {
 	for _, s := range sources() {
-		if s.URL == "manual:" {
+		if s.URL == "manual:" || s.Disabled {
 			continue
 		}
 		id := strconv.Itoa(s.ID)

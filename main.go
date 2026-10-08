@@ -36,6 +36,7 @@ func pageTemplate() *template.Template {
 }
 
 type Source struct {
+	Disabled                                                          bool
 	ProviderTitle, ProviderMessage, Usage, Limit, Expires, NextUpdate string
 	Nodes                                                             []Node
 	HasSelected                                                       bool
@@ -45,6 +46,7 @@ type Source struct {
 	Count                                                             int
 }
 type Node struct {
+	Disabled                                             bool
 	SubscriptionPosition                                 int `json:"-"`
 	BalanceMember                                        bool
 	Compatibility, Encryption, SNI, Flow, Path, Protocol string
@@ -116,6 +118,10 @@ func sources() []Source {
 		if rows.Scan(&s.ID, &s.Name, &s.URL, &s.Headers, &s.Updated, &s.Error, &s.Count) == nil {
 			out = append(out, s)
 		}
+	}
+	rows.Close()
+	for i := range out {
+		out[i].Disabled = sourceDisabled(strconv.Itoa(out[i].ID))
 	}
 	return out
 }
@@ -563,7 +569,7 @@ func pageData(r *http.Request) Page {
 			for _, n := range p.Nodes {
 				if n.SourceID == p.Sources[i].ID {
 					p.Sources[i].Nodes = append(p.Sources[i].Nodes, n)
-					if fmt.Sprint(n.ID) == p.Selected {
+					if !n.Disabled && fmt.Sprint(n.ID) == p.Selected {
 						p.Sources[i].HasSelected = true
 						copy := n
 						p.SelectedNode = &copy
@@ -579,7 +585,7 @@ func pageData(r *http.Request) Page {
 		}
 	}
 	if p.Tab == "nodes" {
-		p.Nodes = allNodes()
+		p.Nodes = activeNodes(allNodes())
 	}
 	if p.Tab == "devices" {
 		p.Devices = devices()
@@ -594,7 +600,7 @@ func pageData(r *http.Request) Page {
 	if p.Tab == "routing" || p.Tab == "devices" {
 		p.Rules = allRules()
 		p.Sources = sources()
-		p.Nodes = allNodes()
+		p.Nodes = activeNodes(allNodes())
 		for i := range p.Sources {
 			for _, n := range p.Nodes {
 				if n.SourceID == p.Sources[i].ID {

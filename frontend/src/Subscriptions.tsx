@@ -14,6 +14,7 @@ import {
   Tooltip,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -28,6 +29,7 @@ import {
   PlusOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  RightOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import "./subscriptions.css";
@@ -62,6 +64,7 @@ export default function Subscriptions({
     [group, setGroup] = useState<Group | null | undefined>(),
     [manual, setManual] = useState(false),
     [section, setSection] = useState("connections"),
+    [pagination, setPagination] = useState<Record<string, { current: number; pageSize: number }>>({}),
     [detail, setDetail] = useState<Node | null>(null),
     [testMode, setTestMode] = useState("real"),
     [search, setSearch] = useState(""),
@@ -146,7 +149,7 @@ export default function Subscriptions({
   const doRun = (name: string, values: Values = {}) => {
     if (["node-probe", "source-probe", "probe-all", "group-check"].includes(name)) {
       const request = Date.now().toString(36) + Math.random().toString(36).slice(2);
-      const nodes = (p.Nodes || []).filter(n => name === "node-probe" ? String(n.ID) === String(values.id) : name === "source-probe" ? String(n.SourceID) === String(values.id) : name === "group-check" ? (p.Groups || []).find(g => g.id === String(values.group_id))?.nodes.includes(String(n.ID)) : true);
+      const nodes = (p.Nodes || []).filter(n => !n.Disabled && (name === "node-probe" ? String(n.ID) === String(values.id) : name === "source-probe" ? String(n.SourceID) === String(values.id) : name === "group-check" ? (p.Groups || []).find(g => g.id === String(values.group_id))?.nodes.includes(String(n.ID)) : true));
       for (const n of nodes) probeRequests.current[n.ID] = request;
       setProbes(previous => ({ ...previous, ...Object.fromEntries(nodes.map(n => [n.ID, { State: "running", Mode: testMode, RunID: request, Message: "Проверяется…", Checked: "", HTTPSMS: 0 }])) }));
       if (name === "source-probe" || name === "probe-all") {
@@ -184,7 +187,10 @@ export default function Subscriptions({
       rowKey="ID"
       size="small"
       pagination={{
-        pageSize: 30,
+        current: pagination[scope]?.current || 1,
+        pageSize: pagination[scope]?.pageSize || 30,
+        pageSizeOptions: [10, 30, 50, 100],
+        onChange: (current, pageSize) => setPagination(previous => ({ ...previous, [scope]: { current, pageSize } })),
         showSizeChanger: true,
         hideOnSinglePage: true,
       }}
@@ -200,7 +206,7 @@ export default function Subscriptions({
               <TooltipButton title={"Параметры «" + n.Name + "»"} icon={<EditOutlined />} onClick={() => setDetail(n)} />
               <Dropdown trigger={["click"]} menu={{
                 items: [
-                  { key: "select", label: g ? "Выбрать в группе" : "Выбрать VPN", disabled: !!n.Compatibility },
+                  { key: "select", label: g ? "Выбрать в группе" : "Выбрать VPN", disabled: n.Disabled || !!n.Compatibility },
                   ...(!g ? [{ key: "delete", label: "Удалить", danger: true }] : []),
                 ],
                 onClick: ({ key }) => key === "select"
@@ -262,7 +268,7 @@ export default function Subscriptions({
               <TooltipButton
                 title="Выбрать"
                 icon={<CheckOutlined />}
-                disabled={!!n.Compatibility}
+                disabled={n.Disabled || !!n.Compatibility}
                 onClick={() =>
                   doRun(
                     g ? "group-select" : "select-node",
@@ -274,6 +280,7 @@ export default function Subscriptions({
                 title="Проверить"
                 icon={<ThunderboltOutlined />}
                 loading={n.Probe?.State === "running"}
+                disabled={n.Disabled}
                 onClick={() => doRun("node-probe", { id: n.ID, mode: testMode })}
               />
 
@@ -290,10 +297,11 @@ export default function Subscriptions({
   const groupItems = (p.Groups || []).map((g) => ({
     key: "group:" + g.id,
     name: g.name, kind: "Группа", count: g.nodes.length,
+    disabled: false, toggle: undefined,
     state: status[g.id]?.Name || "Ожидание Xray",
     mode: g.mode === "fastest" ? "Самый быстрый" : g.mode === "failover" ? "Только при отказе" : "Порог: " + g.threshold_ms + " мс",
     latency: status[g.id]?.Samples?.find(sample => status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + sample.NodeID + "-")),
-    nodes: (p.Nodes || []).filter((n) => g.nodes.includes(String(n.ID))),
+    nodes: (p.Nodes || []).filter((n) => !n.Disabled && g.nodes.includes(String(n.ID))),
     edit: () => editGroup(g),
     label: (
       <Space>
@@ -353,7 +361,7 @@ export default function Subscriptions({
           </Typography.Paragraph>
         )}
         {table(
-          (p.Nodes || []).filter((n) => g.nodes.includes(String(n.ID))),
+          (p.Nodes || []).filter((n) => !n.Disabled && g.nodes.includes(String(n.ID))),
           g, g.name,
         )}
       </>
@@ -362,6 +370,7 @@ export default function Subscriptions({
   const sourceItems = (p.Sources || []).map((s) => ({
     key: "source:" + s.ID,
     name: s.Name, kind: s.URL === "manual:" ? "Вручную" : "Подписка", count: s.Count,
+    disabled: s.Disabled, toggle: s.URL === "manual:" ? undefined : (enabled: boolean) => doRun("source-toggle", { id: s.ID, enabled: enabled ? "1" : "0" }),
     state: s.Error || (s.Updated ? date(s.Updated) : "Не обновлена"),
     mode: "", latency: undefined,
     nodes: s.Nodes || [],
@@ -392,7 +401,7 @@ export default function Subscriptions({
               ...(s.URL === "manual:"
                 ? []
                 : [{ key: "edit", label: "Изменить" }]),
-              { key: "probe", label: "Проверить подключения" },
+              { key: "probe", label: "Проверить подключения", disabled: s.Disabled },
               { key: "delete", label: "Удалить", danger: true },
             ],
             onClick: ({ key, domEvent }) => {
@@ -417,6 +426,7 @@ export default function Subscriptions({
     ),
     content: (
       <>
+        {s.Disabled && <Alert type="warning" className="section-gap" title="Подписка отключена. Её подключения исключены из VPN, маршрутов, групп и проверок после применения конфигурации." />}
         <div className="source-meta">
           <Typography.Text type="secondary">
             Обновлена: {date(s.Updated)}
@@ -467,7 +477,7 @@ export default function Subscriptions({
             <Tooltip title="HTTP-запрос через VPN по уже установленному соединению"><Radio.Button value="http">HTTP</Radio.Button></Tooltip>
             <Tooltip title="HTTPS через VPN, включая установление соединения и TLS"><Radio.Button value="real">Реальная задержка</Radio.Button></Tooltip>
           </Radio.Group>
-          <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={batch?.State === "running"} disabled={batch?.State === "running" || !(p.Nodes || []).length} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
+          <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={batch?.State === "running"} disabled={batch?.State === "running" || !(p.Nodes || []).some(n => !n.Disabled)} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
         </div>}
         </div>
         <div className="source-search">
@@ -511,11 +521,13 @@ export default function Subscriptions({
           className="subscriptions-table section-gap"
           size="small"
           rowKey="key"
+          rowClassName={item => item.disabled ? "source-disabled" : ""}
           pagination={false}
           scroll={{ x: 820 }}
           dataSource={(section === "groups" ? groupItems : sourceItems).filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()) || filtered(item.nodes).length > 0)}
           locale={{ emptyText: section === "groups" ? "Групп пока нет. Добавьте группу и выберите её участников." : "Подключений нет. Добавьте подписку или ссылку подключения." }}
           expandable={{
+            expandIcon: ({ expanded, onExpand, record }) => <Button type="text" size="small" className="source-expand" aria-label={expanded ? "Свернуть строку" : "Развернуть строку"} aria-expanded={expanded} icon={<RightOutlined rotate={expanded ? 90 : 0} />} onClick={e => onExpand(record, e)} />,
             expandedRowKeys: opened,
             expandedRowRender: (item) => <div className="subscription-expanded">{item.content}</div>,
             onExpandedRowsChange: (keys) => {
@@ -527,6 +539,7 @@ export default function Subscriptions({
           }}
           columns={[
             { title: "#", width: 90, render: (_, item, index) => <div className="outbound-actions"><span className="outbound-index">{index + 1}</span>{item.edit && <TooltipButton title={"Изменить «" + item.name + "»"} icon={<EditOutlined />} onClick={item.edit} />}</div> },
+            ...(section === "connections" ? [{ title: "Включено", width: 85, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => item.toggle ? <Switch size="small" checked={!item.disabled} aria-label={"Подписка " + item.name} onChange={item.toggle} /> : "—" }] : []),
             { title: "Название", render: (_, item) => <Typography.Text strong ellipsis={{ tooltip: item.name }}><FlagText text={item.name} /></Typography.Text> },
             ...(section === "connections" ? [{ title: "Тип", width: 110, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => <Tag>{item.kind}</Tag> }] : []),
             { title: "Подключения", width: 115, dataIndex: "count" },
@@ -658,7 +671,7 @@ export default function Subscriptions({
             className="group-picker"
             showSearch
             titles={["Доступные", "В группе"]}
-            dataSource={(p.Nodes || []).map((n) => ({
+            dataSource={(p.Nodes || []).filter(n => !n.Disabled).map((n) => ({
               key: String(n.ID),
               title: n.Name,
               description: n.Host,

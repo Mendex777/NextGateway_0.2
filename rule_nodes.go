@@ -21,6 +21,7 @@ func validTarget(target string) bool {
 	return e == nil && id > 0 && target == fmt.Sprintf("node:%d", id)
 }
 func targetTag(target string) string {
+	target = effectiveTarget(target)
 	if strings.HasPrefix(target, "node:") {
 		return "node-" + strings.TrimPrefix(target, "node:")
 	}
@@ -59,6 +60,9 @@ func validateRuleNode(target string) error {
 	}
 	if !strings.HasPrefix(target, "node:") {
 		return nil
+	}
+	if nodeDisabled(strings.TrimPrefix(target, "node:")) {
+		return fmt.Errorf("Подписка отключена")
 	}
 	var raw string
 	if db.QueryRow("SELECT uri FROM nodes WHERE id=?", strings.TrimPrefix(target, "node:")).Scan(&raw) != nil {

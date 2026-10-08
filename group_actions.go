@@ -8,6 +8,9 @@ import (
 )
 
 func selectGroupNode(id, node string) error {
+	if nodeDisabled(node) {
+		return fmt.Errorf("Подписка отключена")
+	}
 	groupActionLock.Lock()
 	defer groupActionLock.Unlock()
 	runtime := readRuntime()
@@ -77,6 +80,9 @@ func startGroupCheck(id string, requests ...string) error {
 	}
 	raws := map[string]string{}
 	for _, node := range g.Nodes {
+		if nodeDisabled(node) {
+			continue
+		}
 		var raw string
 		if e := db.QueryRow("SELECT uri FROM nodes WHERE id=?", node).Scan(&raw); e != nil {
 			probeLock.Unlock()
@@ -101,6 +107,9 @@ func startGroupCheck(id string, requests ...string) error {
 		result := GroupCheckResult{State: "running", Message: "Проверяются участники…"}
 		all := map[string]GroupSample{}
 		for _, node := range g.Nodes {
+			if nodeDisabled(node) {
+				continue
+			}
 			saveProbe(node, ProbeResult{State: "running", Mode: "real", RunID: runID})
 			probe := probeNode(raws[node])
 			probe.RunID = runID
@@ -122,6 +131,9 @@ func startGroupCheck(id string, requests ...string) error {
 		next := decideGroup(preview, all, state, time.Now())
 		name := ""
 		for _, node := range g.Nodes {
+			if nodeDisabled(node) {
+				continue
+			}
 			if next.Current == "auto-vpn-"+id+"-"+node+"-" {
 				db.QueryRow("SELECT name FROM nodes WHERE id=?", node).Scan(&name)
 			}

@@ -9,6 +9,7 @@ export interface Probe {
   Mode?: string;
 }
 export interface Node {
+  Disabled: boolean;
   ID: number;
   SourceID: number;
   Name: string;
@@ -25,6 +26,7 @@ export interface Node {
   Probe: Probe;
 }
 export interface Source {
+  Disabled: boolean;
   ID: number;
   Name: string;
   URL: string;

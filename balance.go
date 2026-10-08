@@ -241,6 +241,9 @@ func addGroups(config map[string]any) error {
 		}
 		prefix := "auto-vpn-" + g.ID + "-"
 		for _, id := range ids {
+			if nodeDisabled(id) {
+				continue
+			}
 			var raw string
 			if db.QueryRow("SELECT uri FROM nodes WHERE id=?", id).Scan(&raw) != nil {
 				return fmt.Errorf("Участник группы %s отсутствует", g.Name)

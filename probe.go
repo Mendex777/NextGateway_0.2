@@ -27,6 +27,9 @@ func startProbe(id string, modes ...string) error {
 	if err != nil {
 		return err
 	}
+	if nodeDisabled(id) {
+		return fmt.Errorf("Подписка отключена")
+	}
 	var raw string
 	if e := db.QueryRow("SELECT uri FROM nodes WHERE id=?", id).Scan(&raw); e != nil {
 		return fmt.Errorf("Подключение не найдено")

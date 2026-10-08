@@ -39,3 +39,4 @@
 .probe-pill { display:inline-flex; align-items:center; gap:4px; border-radius:12px; padding:2px 7px; font-size:11px; white-space:nowrap; }
 .probe-ok { color:#13c2c2; background:rgba(19,194,194,.12); }
 .probe-fail { color:#ff4d4f; background:rgba(255,77,79,.12); }
+.source-disabled > td { color: rgba(255,255,255,.38); } .source-disabled .outbound-index { opacity: .5; } .source-expand.ant-btn { width: 24px; height: 24px; padding: 0; }

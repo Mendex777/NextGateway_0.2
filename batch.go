@@ -29,7 +29,7 @@ func startBatch(id string, modes ...string) error {
 	if id != "" && db.QueryRow("SELECT id FROM sources WHERE id=?", id).Scan(&exists) != nil {
 		return fmt.Errorf("Подписка не найдена")
 	}
-	nodes := allNodes()
+	nodes := activeNodes(allNodes())
 	var group []Node
 	for _, n := range nodes {
 		if id == "" || strconv.Itoa(n.SourceID) == id {
