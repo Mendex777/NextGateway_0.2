@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,7 +21,13 @@ func canonicalURI(raw string) string {
 	}
 	u.Fragment = ""
 	u.RawFragment = ""
-	u.RawQuery = u.Query().Encode()
+	q := u.Query()
+	// Reality short IDs and spider paths may rotate without changing the node.
+	if u.Scheme == "vless" && q.Get("security") == "reality" {
+		q.Del("sid")
+		q.Del("spx")
+	}
+	u.RawQuery = q.Encode()
 	return u.String()
 }
 func saveSource(r *http.Request) error {
@@ -105,4 +112,51 @@ func refreshDueSources(now time.Time) {
 			refreshRecorded(id)
 		}
 	}
+}
+
+// Redirect only duplicates proven to share the subscription identity.
+func mergeSubscriptionNode(tx *sql.Tx, oldID, keepID int) error {
+	old, keep := strconv.Itoa(oldID), strconv.Itoa(keepID)
+	if _, err := tx.Exec("UPDATE rules SET target=? WHERE target=?", "node:"+keep, "node:"+old); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE settings SET value=? WHERE key='selected_node' AND value=?", keep, old); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE settings SET value=? WHERE key='default_route' AND value=?", "node:"+keep, "node:"+old); err != nil {
+		return err
+	}
+	var raw string
+	if err := tx.QueryRow("SELECT value FROM settings WHERE key='balance_groups'").Scan(&raw); err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if raw != "" {
+		var groups []BalanceGroup
+		if err := json.Unmarshal([]byte(raw), &groups); err != nil {
+			return err
+		}
+		for i := range groups {
+			nodes := []string{}
+			seen := map[string]bool{}
+			for _, id := range groups[i].Nodes {
+				if id == old {
+					id = keep
+				}
+				if !seen[id] {
+					nodes = append(nodes, id)
+					seen[id] = true
+				}
+			}
+			groups[i].Nodes = nodes
+		}
+		b, err := json.Marshal(groups)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec("UPDATE settings SET value=? WHERE key='balance_groups'", string(b)); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec("DELETE FROM nodes WHERE id=?", oldID)
+	return err
 }

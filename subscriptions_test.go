@@ -25,7 +25,7 @@ func TestSubscriptionRefreshKeepsSelectionOnRenameAndRemoval(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	body := "vless://id@proxy.example.com:443?type=tcp&security=none#old"
+	body := "vless://id@proxy.example.com:443?type=tcp&security=reality&sid=aa&spx=%2F#old"
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -40,7 +40,7 @@ func TestSubscriptionRefreshKeepsSelectionOnRenameAndRemoval(t *testing.T) {
 	db.QueryRow("SELECT id FROM nodes").Scan(&id)
 	db.Exec("INSERT INTO rules VALUES(1,?)", "node:"+strconv.Itoa(id))
 	saveSetting("selected_node", strconv.Itoa(id))
-	body = "vless://id@proxy.example.com:443?security=none&type=tcp#renamed"
+	body = "vless://id@proxy.example.com:443?security=reality&type=tcp&sid=bb&spx=%2Fnew#renamed"
 	if e = refresh("1"); e != nil {
 		t.Fatal(e)
 	}
@@ -49,6 +49,25 @@ func TestSubscriptionRefreshKeepsSelectionOnRenameAndRemoval(t *testing.T) {
 	db.QueryRow("SELECT id,name FROM nodes").Scan(&sameID, &name)
 	if id != sameID || name != "renamed" {
 		t.Fatal("rename or query order lost node identity")
+	}
+	// A historical duplicate referenced by a rule must merge into the selected ID.
+	res, err := db.Exec("INSERT INTO nodes SELECT NULL,source_id,uri,name,host,port,transport,security FROM nodes WHERE id=?", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate, _ := res.LastInsertId()
+	db.Exec("INSERT INTO rules VALUES(2,?)", "node:"+strconv.FormatInt(duplicate, 10))
+	saveSetting("default_route", "node:"+strconv.FormatInt(duplicate, 10))
+	saveSetting("balance_groups", `[{"id":"test","name":"test","nodes":["`+strconv.FormatInt(duplicate, 10)+`"]}]`)
+	if e = refresh("1"); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	db.QueryRow("SELECT count(*) FROM nodes").Scan(&count)
+	var target string
+	db.QueryRow("SELECT target FROM rules WHERE id=2").Scan(&target)
+	if count != 1 || target != "node:"+strconv.Itoa(id) || setting("default_route") != target || balanceGroups()[0].Nodes[0] != strconv.Itoa(id) {
+		t.Fatal("duplicate merge lost references")
 	}
 	body = "vless://new@another.example.com:443?security=none#new"
 	if e = refresh("1"); e != nil {
@@ -94,4 +113,16 @@ func TestSubscriptionRefreshKeepsSelectionOnRenameAndRemoval(t *testing.T) {
 		t.Fatal("rule-bound node was removed when not globally selected")
 	}
 
+}
+
+func TestSubscriptionIdentityKeepsAuthenticationAndTransportDistinct(t *testing.T) {
+	base := "vless://id@proxy.example.com:443?security=reality&type=tcp&pbk=key&sid=aa&spx=%2F"
+	for _, raw := range []string{strings.Replace(base, "id@", "other@", 1), strings.Replace(base, "pbk=key", "pbk=other", 1), strings.Replace(base, "type=tcp", "type=grpc", 1)} {
+		if canonicalURI(base) == canonicalURI(raw) {
+			t.Fatal("distinct connection merged")
+		}
+	}
+	if canonicalURI(base) != canonicalURI(strings.Replace(base, "sid=aa&spx=%2F", "sid=bb&spx=%2Fnew", 1)) {
+		t.Fatal("rotating Reality parameters changed identity")
+	}
 }

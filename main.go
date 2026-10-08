@@ -224,8 +224,8 @@ func refresh(id string) error {
 		return e
 	}
 	defer tx.Rollback()
-	previous := map[string]int{}
-	rows, e := tx.Query("SELECT id,uri FROM nodes WHERE source_id=?", id)
+	previous := map[string][]int{}
+	rows, e := tx.Query("SELECT id,uri FROM nodes WHERE source_id=? ORDER BY id", id)
 	if e != nil {
 		return e
 	}
@@ -236,16 +236,39 @@ func refresh(id string) error {
 			rows.Close()
 			return e
 		}
-		previous[canonicalURI(uri)] = nid
+		key := canonicalURI(uri)
+		previous[key] = append(previous[key], nid)
 	}
 	if e = rows.Err(); e != nil {
 		rows.Close()
 		return e
 	}
 	rows.Close()
+	seen := map[string]bool{}
 	for raw, n := range nodes {
 		key := canonicalURI(raw)
-		if nid, ok := previous[key]; ok {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if ids, ok := previous[key]; ok {
+			nid := ids[0]
+			for _, candidate := range ids {
+				if fmt.Sprint(candidate) == selected {
+					nid = candidate
+					break
+				}
+				if referenced[fmt.Sprint(candidate)] && !referenced[fmt.Sprint(nid)] {
+					nid = candidate
+				}
+			}
+			for _, duplicate := range ids {
+				if duplicate != nid {
+					if e = mergeSubscriptionNode(tx, duplicate, nid); e != nil {
+						return e
+					}
+				}
+			}
 			_, e = tx.Exec("UPDATE nodes SET uri=?,name=?,host=?,port=?,transport=?,security=? WHERE id=?", raw, n.Name, n.Host, n.Port, n.Transport, n.Security, nid)
 			delete(previous, key)
 		} else {
@@ -255,16 +278,18 @@ func refresh(id string) error {
 			return e
 		}
 	}
-	for _, nid := range previous {
-		if fmt.Sprint(nid) == selected || referenced[fmt.Sprint(nid)] {
-			_, e = tx.Exec("UPDATE nodes SET name=CASE WHEN name LIKE ? THEN name ELSE name || ? END WHERE id=?", "% [исчез из подписки]", " [исчез из подписки]", nid)
-			if e != nil {
+	for _, ids := range previous {
+		for _, nid := range ids {
+			if fmt.Sprint(nid) == selected || referenced[fmt.Sprint(nid)] {
+				_, e = tx.Exec("UPDATE nodes SET name=CASE WHEN name LIKE ? THEN name ELSE name || ? END WHERE id=?", "% [исчез из подписки]", " [исчез из подписки]", nid)
+				if e != nil {
+					return e
+				}
+				continue
+			}
+			if _, e = tx.Exec("DELETE FROM nodes WHERE id=?", nid); e != nil {
 				return e
 			}
-			continue
-		}
-		if _, e = tx.Exec("DELETE FROM nodes WHERE id=?", nid); e != nil {
-			return e
 		}
 	}
 	if _, e = tx.Exec("UPDATE sources SET updated=?,error='' WHERE id=?", time.Now().UTC().Format(time.RFC3339), id); e != nil {
