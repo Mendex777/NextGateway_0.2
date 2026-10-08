@@ -46,8 +46,8 @@ func ruleAction(t *testing.T, values url.Values) error {
 func TestRuleEditDisableAndReenable(t *testing.T) {
 	configDatabase(t)
 	db.Exec("INSERT INTO rules VALUES(1,100,'vpn','domain','domain:example.com','proxy')")
-	if _, e := buildConfig(); e == nil {
-		t.Fatal("active proxy rule must require a node")
+	if _, e := buildConfig(); e != nil {
+		t.Fatal(e)
 	}
 	toggle := url.Values{"action": {"rule-toggle"}, "id": {"1"}}
 	if e := ruleAction(t, toggle); e != nil {

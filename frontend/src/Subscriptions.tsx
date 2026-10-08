@@ -168,6 +168,12 @@ export default function Subscriptions({
   const confirm = (title: string, name: string, values: Values) =>
     modal.confirm({
       title,
+      content: (() => {
+        const ids = (p.Nodes || []).filter(n => name === "delete" ? String(n.SourceID) === String(values.id) : String(n.ID) === String(values.id)).map(n => String(n.ID));
+        const rules = (p.Rules || []).filter(r => ids.includes(r.Target.replace(/^node:/, "")) || (r.Target === "proxy" && ids.includes(p.Selected)));
+        const groups = (p.Groups || []).filter(g => g.nodes.some(id => ids.includes(id)));
+        return <Space direction="vertical"><span>Правила и группы сохранятся. Для недоступных выходов действует настройка «Если VPN недоступен».</span>{ids.includes(p.Selected) && <span>Выбор VPN будет снят.</span>}{rules.length > 0 && <span>Правила: {rules.map(r => r.Name).join(", ")}</span>}{groups.length > 0 && <span>Группы: {groups.map(g => g.name).join(", ")}</span>}</Space>;
+      })(),
       okText: "Удалить",
       cancelText: "Отмена",
       okButtonProps: { danger: true },
@@ -291,12 +297,12 @@ export default function Subscriptions({
     />
   );
   const editGroup = (g: Group | null) => {
-    setMembers(g?.nodes || []);
+    setMembers((g?.nodes || []).filter(id => (p.Nodes || []).some(n => String(n.ID) === id)));
     setGroup(g);
   };
   const groupItems = (p.Groups || []).map((g) => ({
     key: "group:" + g.id,
-    name: g.name, kind: "Группа", count: g.nodes.length,
+    name: g.name, kind: "Группа", count: (p.Nodes || []).filter(n => !n.Disabled && g.nodes.includes(String(n.ID))).length,
     disabled: false, toggle: undefined,
     state: status[g.id]?.Name || "Ожидание Xray",
     mode: g.mode === "fastest" ? "Самый быстрый" : g.mode === "failover" ? "Только при отказе" : "Порог: " + g.threshold_ms + " мс",
@@ -495,6 +501,12 @@ export default function Subscriptions({
             title={<FlagText text={"Выбранный VPN: " + p.SelectedNode.Name} />}
           />
         )}{" "}
+        {section === "connections" && <Space wrap className="section-gap">
+          <Typography.Text>Если VPN недоступен</Typography.Text>
+          <Select aria-label="Если VPN недоступен" value={p.VPNUnavailable || "block"} style={{minWidth:240}} options={[{value:"block",label:"Блокировать трафик"},{value:"direct",label:"Напрямую через провайдера"}]} onChange={value => value === "direct" ? modal.confirm({title:"Разрешить трафик напрямую при недоступности VPN?",content:"Это относится к выбранному VPN, отдельным узлам и группам без доступных участников. Такой трафик пойдёт через провайдера без VPN после применения конфигурации.",okText:"Разрешить",cancelText:"Отмена",onOk:()=>run("vpn-unavailable",{value})}) : doRun("vpn-unavailable",{value})} />
+          {p.Selected && <Button onClick={() => modal.confirm({title:"Снять выбор VPN?",content:"Правила сохранятся. Для них будет действовать выбранное поведение при недоступности VPN после применения конфигурации.",okText:"Снять выбор",cancelText:"Отмена",onOk:()=>run("clear-vpn")})}>Снять выбор VPN</Button>}
+        </Space>}
+        {p.VPNWarning && <Alert showIcon type="warning" className="section-gap" title={p.VPNWarning} />}
         {batch?.State && (
           <Alert
             className="section-gap"

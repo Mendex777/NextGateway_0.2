@@ -40,12 +40,12 @@ func TestRulesUseSeparateVPNNodes(t *testing.T) {
 	}
 	r := httptest.NewRequest("POST", "/action", nil)
 	r.Form = url.Values{"action": {"node-delete"}, "id": {"1"}}
-	if _, _, e = controlAction(r); e == nil {
-		t.Fatal("referenced node deletion accepted")
+	if _, _, e = controlAction(r); e != nil {
+		t.Fatal(e)
 	}
 	db.Exec("DELETE FROM nodes WHERE id=2")
-	if _, e = buildConfig(); e == nil {
-		t.Fatal("missing VPN silently fell back")
+	if _, e = buildConfig(); e != nil {
+		t.Fatal(e)
 	}
 	db.Exec("DELETE FROM rules WHERE id=2")
 	db.Exec("INSERT INTO settings VALUES('rule_disabled:2','1')")

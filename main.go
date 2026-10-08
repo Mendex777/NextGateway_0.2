@@ -57,6 +57,7 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	VPNUnavailable, VPNWarning                                            string
 	SourceCount, NodeCount, RuleCount, DeviceCount                        int
 	GatewayReady                                                          bool
 	Components                                                            []ComponentStatus
@@ -293,7 +294,7 @@ func refresh(id string) error {
 			delete(previous, key)
 		} else {
 			var result sql.Result
-			result, e = tx.Exec("INSERT INTO nodes(source_id,uri,name,host,port,transport,security) VALUES(?,?,?,?,?,?,?)", id, raw, n.Name, n.Host, n.Port, n.Transport, n.Security)
+			result, e = tx.Exec("INSERT INTO nodes(id,source_id,uri,name,host,port,transport,security) VALUES("+nextNodeID+",?,?,?,?,?,?,?)", id, raw, n.Name, n.Host, n.Port, n.Transport, n.Security)
 			if e == nil {
 				inserted, err := result.LastInsertId()
 				e = err
@@ -447,18 +448,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				}
 				msg = "Подписка импортирована; Xray не изменён"
 			case "delete":
-				if sourceProtected(r.FormValue("id")) {
-					e = fmt.Errorf("Подписка содержит выбранный VPN или участника группы/правила; сначала измените настройки")
-					break
-				}
-				res, err := db.Exec("DELETE FROM sources WHERE id=? AND NOT EXISTS (SELECT 1 FROM nodes n JOIN rules r ON r.target='node:' || n.id WHERE n.source_id=sources.id)", r.FormValue("id"))
-				e = err
-				if e == nil {
-					n, _ := res.RowsAffected()
-					if n == 0 {
-						e = fmt.Errorf("Подключения источника используются правилами или источник уже удалён; сначала измените правила")
-					}
-				}
+				e = deleteConnections(r.FormValue("id"), true)
 			default:
 				http.Error(w, "Unknown action", 400)
 				return
@@ -510,6 +500,8 @@ func pageData(r *http.Request) Page {
 		p.NetworkError = e.Error()
 	}
 	p.Groups = balanceGroups()
+	p.VPNUnavailable = unavailableTarget()
+	p.VPNWarning = vpnAvailabilityWarning()
 
 	p.OperationAction, p.OperationSince = r.URL.Query().Get("operation"), r.URL.Query().Get("since")
 	p.PanelVersion, p.PanelCommit = panelVersion, panelCommit
@@ -556,6 +548,7 @@ func pageData(r *http.Request) Page {
 		p.Tab = "subscriptions"
 	}
 	if p.Tab == "subscriptions" {
+		p.Rules = allRules()
 		p.Nodes = allNodes()
 		p.Sources = sources()
 		for i := range p.Groups {

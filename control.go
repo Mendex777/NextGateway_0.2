@@ -105,6 +105,9 @@ func allRules() []Rule {
 	rows.Close()
 	for i := range out {
 		out[i].TargetLabel = targetLabel(out[i].Target)
+		if effectiveTarget(out[i].Target) != out[i].Target {
+			out[i].TargetLabel += " — недоступен"
+		}
 		out[i].ValueCount = len(strings.FieldsFunc(out[i].Value, func(c rune) bool { return c == '\n' || c == ',' }))
 	}
 	return out
@@ -222,7 +225,7 @@ func buildConfig() (map[string]any, error) {
 	for i := range rules {
 		rules[i].Target = effectiveTarget(rules[i].Target)
 	}
-	needProxy := mode == "proxy" || setting("dns_mode") == "proxy" && effectiveTarget("proxy") != "block"
+	needProxy := mode == "proxy" || setting("dns_mode") == "proxy" && effectiveTarget("proxy") == "proxy"
 	for _, r := range rules {
 		if r.Disabled {
 			continue
@@ -316,7 +319,7 @@ func enqueue(action string, config map[string]any) error {
 	for i := range j.Groups {
 		active := []string{}
 		for _, id := range j.Groups[i].Nodes {
-			if !nodeDisabled(id) {
+			if nodeAvailable(id) {
 				active = append(active, id)
 			}
 		}
@@ -501,6 +504,14 @@ func controlAction(r *http.Request) (bool, string, error) {
 			}
 		}
 		e = tx.Commit()
+	case "clear-vpn":
+		e = saveSetting("selected_node", "")
+	case "vpn-unavailable":
+		value := r.FormValue("value")
+		if value != "block" && value != "direct" {
+			return true, "", fmt.Errorf("Некорректное поведение VPN")
+		}
+		e = saveSetting("vpn_unavailable", value)
 	case "source-toggle":
 		e = setSourceEnabled(r.FormValue("id"), r.FormValue("enabled") == "1")
 	case "select-node":
@@ -540,7 +551,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 			sid = int(id)
 		}
 		for uri, n := range nodes {
-			_, e = db.Exec("INSERT INTO nodes(source_id,uri,name,host,port,transport,security) VALUES(?,?,?,?,?,?,?)", sid, uri, n.Name, n.Host, n.Port, n.Transport, n.Security)
+			_, e = db.Exec("INSERT INTO nodes(id,source_id,uri,name,host,port,transport,security) VALUES("+nextNodeID+",?,?,?,?,?,?,?)", sid, uri, n.Name, n.Host, n.Port, n.Transport, n.Security)
 		}
 	case "rule-add", "rule-update":
 		if err := validateRuleNode(r.FormValue("target")); err != nil {
@@ -619,17 +630,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 			tx.Rollback()
 		}
 	case "node-delete":
-		if r.FormValue("id") == setting("selected_node") || referencedNodes()[r.FormValue("id")] {
-			return true, "", fmt.Errorf("Подключение используется выбранным VPN, группой или правилом; сначала измените настройки")
-		}
-		res, err := db.Exec("DELETE FROM nodes WHERE id=? AND NOT EXISTS (SELECT 1 FROM rules WHERE target='node:' || nodes.id)", r.FormValue("id"))
-		e = err
-		if e == nil {
-			n, _ := res.RowsAffected()
-			if n == 0 {
-				e = fmt.Errorf("Подключение используется правилом или уже удалено; сначала измените правило")
-			}
-		}
+		e = deleteConnections(r.FormValue("id"), false)
 	default:
 		return false, "", nil
 	}

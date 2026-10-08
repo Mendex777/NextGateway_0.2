@@ -106,6 +106,8 @@ export interface RouteResult {
   Note: string;
 }
 export interface Page {
+  VPNUnavailable: string;
+  VPNWarning: string;
   Tab: string;
   PanelVersion: string;
   PanelCommit: string;

@@ -28,13 +28,13 @@ func TestProxyRequiresSelectedNode(t *testing.T) {
 	if e := saveSetting("default_route", "proxy"); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := buildConfig(); e == nil {
-		t.Fatal("proxy without selected node accepted")
+	if _, e := buildConfig(); e != nil {
+		t.Fatal(e)
 	}
 	saveSetting("default_route", "direct")
 	db.Exec("INSERT INTO rules VALUES(1,1,'proxy','domain','domain:example.com','proxy')")
-	if _, e := buildConfig(); e == nil {
-		t.Fatal("proxy rule without selected node accepted")
+	if _, e := buildConfig(); e != nil {
+		t.Fatal(e)
 	}
 }
 func TestRulePriorityAndNoBalancerFallback(t *testing.T) {

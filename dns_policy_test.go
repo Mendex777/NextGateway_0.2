@@ -16,7 +16,7 @@ func TestDNSPolicyOrderedFallback(t *testing.T) {
 	if servers[0].(map[string]any)["finalQuery"] != false || servers[1].(map[string]any)["finalQuery"] != true {
 		t.Fatal("reserve group must end before later overlapping rule")
 	}
-	if routes[0].(map[string]any)["outboundTag"] != "proxy" {
+	if routes[0].(map[string]any)["outboundTag"] != "block" {
 		t.Fatal("VPN DNS escaped to direct")
 	}
 }

@@ -183,7 +183,9 @@ func restoreBackupOptions(raw []byte, keepMachine bool) error {
 	}
 	for _, id := range bound {
 		var n int
-		if err = tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", id).Scan(&n); err != nil || n != 1 {
+		var deleted string
+		tx.QueryRow("SELECT value FROM settings WHERE key=?", "node_deleted:"+id).Scan(&deleted)
+		if err = tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", id).Scan(&n); err != nil || (n != 1 && deleted != "1") {
 			return fmt.Errorf("В бекапе отсутствует подключение, указанное в правиле")
 		}
 	}
@@ -241,7 +243,9 @@ func restoreBackupOptions(raw []byte, keepMachine bool) error {
 		for _, id := range ids {
 			var count int
 			tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", id).Scan(&count)
-			if count != 1 {
+			var deleted string
+			tx.QueryRow("SELECT value FROM settings WHERE key=?", "node_deleted:"+id).Scan(&deleted)
+			if count != 1 && deleted != "1" {
 				return fmt.Errorf("В бекапе отсутствует участник группы")
 			}
 		}
@@ -275,7 +279,9 @@ func restoreBackupOptions(raw []byte, keepMachine bool) error {
 		if strings.HasPrefix(target, "node:") {
 			var count int
 			tx.QueryRow("SELECT COUNT(*) FROM nodes WHERE id=?", target[5:]).Scan(&count)
-			if count != 1 {
+			var deleted string
+			tx.QueryRow("SELECT value FROM settings WHERE key=?", "node_deleted:"+target[5:]).Scan(&deleted)
+			if count != 1 && deleted != "1" {
 				return fmt.Errorf("В бекапе отсутствует подключение маршрута")
 			}
 		}

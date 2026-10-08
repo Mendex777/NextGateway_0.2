@@ -24,23 +24,57 @@ func activeNodes(nodes []Node) []Node {
 	return out
 }
 func effectiveTarget(target string) string {
-	if target == "proxy" && nodeDisabled(setting("selected_node")) {
-		return "block"
+	if target == "proxy" && !nodeAvailable(setting("selected_node")) {
+		return unavailableTarget()
 	}
-	if strings.HasPrefix(target, "node:") && nodeDisabled(strings.TrimPrefix(target, "node:")) {
-		return "block"
+	if strings.HasPrefix(target, "node:") && !nodeAvailable(strings.TrimPrefix(target, "node:")) {
+		return unavailableTarget()
 	}
 	if strings.HasPrefix(target, "group:") {
 		if g, ok := groupByID(strings.TrimPrefix(target, "group:")); ok {
+			if _, err := balanceMembers(BalanceSettings{Nodes: g.Nodes, Interval: g.Interval}, ""); err != nil {
+				return target
+			}
 			for _, id := range g.Nodes {
-				if !nodeDisabled(id) {
+				if nodeAvailable(id) {
 					return target
 				}
 			}
-			return "block"
+			return unavailableTarget()
 		}
 	}
 	return target
+}
+func unavailableTarget() string {
+	if setting("vpn_unavailable") == "direct" {
+		return "direct"
+	}
+	return "block"
+}
+func nodeAvailable(id string) bool {
+	var exists int
+	if db.QueryRow("SELECT id FROM nodes WHERE id=?", id).Scan(&exists) != nil {
+		return false
+	}
+	return !nodeDisabled(id)
+}
+func vpnAvailabilityWarning() string {
+	count := 0
+	for _, r := range allRules() {
+		if !r.Disabled && effectiveTarget(r.Target) != r.Target {
+			count++
+		}
+	}
+	missingDefault := effectiveTarget(setting("default_route")) != setting("default_route")
+	missingDNS := setting("dns_mode") == "proxy" && !nodeAvailable(setting("selected_node"))
+	if count == 0 && !missingDefault && !missingDNS {
+		return ""
+	}
+	behavior := "Трафик блокируется"
+	if unavailableTarget() == "direct" {
+		behavior = "Трафик идёт напрямую через провайдера"
+	}
+	return fmt.Sprintf("VPN-выход недоступен. Правил без доступного выхода: %d. %s после применения конфигурации.", count, behavior)
 }
 func setSourceEnabled(id string, enabled bool) error {
 	n, err := strconv.Atoi(id)

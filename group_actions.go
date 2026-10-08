@@ -8,7 +8,7 @@ import (
 )
 
 func selectGroupNode(id, node string) error {
-	if nodeDisabled(node) {
+	if !nodeAvailable(node) {
 		return fmt.Errorf("Подписка отключена")
 	}
 	groupActionLock.Lock()
@@ -80,7 +80,7 @@ func startGroupCheck(id string, requests ...string) error {
 	}
 	raws := map[string]string{}
 	for _, node := range g.Nodes {
-		if nodeDisabled(node) {
+		if !nodeAvailable(node) {
 			continue
 		}
 		var raw string
@@ -107,7 +107,7 @@ func startGroupCheck(id string, requests ...string) error {
 		result := GroupCheckResult{State: "running", Message: "Проверяются участники…"}
 		all := map[string]GroupSample{}
 		for _, node := range g.Nodes {
-			if nodeDisabled(node) {
+			if !nodeAvailable(node) {
 				continue
 			}
 			saveProbe(node, ProbeResult{State: "running", Mode: "real", RunID: runID})
@@ -131,7 +131,7 @@ func startGroupCheck(id string, requests ...string) error {
 		next := decideGroup(preview, all, state, time.Now())
 		name := ""
 		for _, node := range g.Nodes {
-			if nodeDisabled(node) {
+			if !nodeAvailable(node) {
 				continue
 			}
 			if next.Current == "auto-vpn-"+id+"-"+node+"-" {

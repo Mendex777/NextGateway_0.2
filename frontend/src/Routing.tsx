@@ -238,7 +238,7 @@ export default function Routing({
       dataIndex: "TargetLabel",
       width: 220,
       render: (v) => (
-        <Tag color="green" bordered={false}>
+        <Tag color={String(v).includes("недоступен") ? "orange" : "green"} bordered={false}>
           <FlagText text={v} />
         </Tag>
       ),

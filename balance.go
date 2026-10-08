@@ -241,7 +241,7 @@ func addGroups(config map[string]any) error {
 		}
 		prefix := "auto-vpn-" + g.ID + "-"
 		for _, id := range ids {
-			if nodeDisabled(id) {
+			if !nodeAvailable(id) {
 				continue
 			}
 			var raw string

@@ -269,6 +269,7 @@ export default function Dashboard({
   return (
     <div className="index-page is-dark">
       <div className="ov-page">
+        {p.VPNWarning && <Alert showIcon type="warning" className="section-gap" title={p.VPNWarning} action={<Button size="small" onClick={() => navigate("subscriptions")}>Подключения</Button>} />}
         <div className="ov-bar">
           <div className={"ov-state " + (active ? "ov-state-running" : "")}>
             <span className="ov-state-dot" />
