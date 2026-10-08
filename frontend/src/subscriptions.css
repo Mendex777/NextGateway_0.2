@@ -1,0 +1,25 @@
+.subscriptions-card .source-toolbar > .ant-space { flex-shrink: 0; }
+.subscriptions-card .source-toolbar > .ant-input-search { width: 320px; max-width: 100%; margin-left: auto; }
+
+.subscriptions-card .source-toolbar .ant-input-group-wrapper { width: 320px; max-width: 100%; }
+.outbound-actions { display: flex; align-items: center; gap: 4px; }
+.outbound-index { min-width: 18px; text-align: right; opacity: .65; margin-right: 4px; }
+.outbound-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.outbound-name { max-width: 280px; font-weight: 500; }
+.outbound-tags { display: flex; flex-wrap: wrap; gap: 2px; }
+.outbound-tags .ant-tag { margin-inline-end: 0; font-size: 11px; line-height: 18px; }
+.outbound-address { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.06); overflow-wrap: anywhere; }
+.subscriptions-table .ant-table-cell { vertical-align: middle; }
+.subscriptions-table > .ant-spin-nested-loading > .ant-spin-container > .ant-table .ant-table-tbody > tr > td { padding: 12px 8px; }
+.subscription-expanded { padding: 8px 12px 12px; }
+.subscription-expanded .outbound-nodes .ant-table-cell { padding: 10px 8px !important; }
+.subscriptions-table .ant-table-expanded-row > td { background: #1a1b1f !important; }
+.subscriptions-table .ant-table-expanded-row .ant-table { background: #23252b; }
+.subscriptions-table .ant-table-row-expand-icon { border: none; background: transparent; }
+.subscriptions-table .ant-table-row-expand-icon:focus-visible { outline: 2px solid var(--ng-accent); }
+@media (max-width: 600px) {
+  .subscriptions-card .source-toolbar { align-items: stretch; }
+  .subscriptions-card .source-toolbar .ant-input-group-wrapper { width: 100%; }
+  .subscriptions-card .source-toolbar > .ant-input-search { width: 100%; }
+  .subscription-expanded { padding: 4px; }
+}

@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Dropdown,
   Form,
@@ -18,6 +17,7 @@ import {
   Typography,
 } from "antd";
 import {
+  CloudDownloadOutlined,
   CheckOutlined,
   EditOutlined,
   MoreOutlined,
@@ -25,6 +25,7 @@ import {
   ReloadOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
+import "./subscriptions.css";
 import { getJSON } from "./api";
 import {
   date,
@@ -135,17 +136,17 @@ export default function Subscriptions({
       okButtonProps: { danger: true },
       onOk: () => run(name, values),
     });
-  const filtered = (nodes: Node[]) =>
+  const filtered = (nodes: Node[], scope = "") =>
     nodes
       .filter((n) =>
-        (n.Name + " " + n.Host + " " + n.Protocol)
+        (scope + " " + n.Name + " " + n.Host + " " + n.Protocol)
           .toLocaleLowerCase()
           .includes(search.toLocaleLowerCase()),
       )
       .map((n) => ({ ...n, Probe: probes[n.ID] || n.Probe }));
-  const table = (nodes: Node[], g?: Group) => (
+  const table = (nodes: Node[], g?: Group, scope = "") => (
     <Table
-      className="node-table"
+      className="node-table outbound-nodes"
       rowKey="ID"
       size="small"
       pagination={{
@@ -153,8 +154,8 @@ export default function Subscriptions({
         showSizeChanger: true,
         hideOnSinglePage: true,
       }}
-      scroll={{ x: 650 }}
-      dataSource={filtered(nodes).map((n) => {
+      scroll={{ x: 760 }}
+      dataSource={filtered(nodes, scope).map((n) => {
         const sample = g
           ? (checks[g.id]?.Samples?.length
               ? checks[g.id].Samples
@@ -175,29 +176,45 @@ export default function Subscriptions({
       })}
       columns={[
         {
+          title: "#",
+          width: 110,
+          render: (_, n) => (
+            <div className="outbound-actions">
+              <span className="outbound-index">{nodes.findIndex((v) => v.ID === n.ID) + 1}</span>
+              <TooltipButton title={"Параметры «" + n.Name + "»"} icon={<EditOutlined />} onClick={() => setDetail(n)} />
+              <Dropdown trigger={["click"]} menu={{
+                items: [
+                  { key: "select", label: g ? "Выбрать в группе" : "Выбрать VPN", disabled: !!n.Compatibility },
+                  ...(!g ? [{ key: "delete", label: "Удалить", danger: true }] : []),
+                ],
+                onClick: ({ key }) => key === "select"
+                  ? doRun(g ? "group-select" : "select-node", g ? { group_id: g.id, node_id: n.ID } : { id: n.ID })
+                  : confirm("Удалить подключение «" + n.Name + "»?", "node-delete", { id: n.ID }),
+              }}>
+                <Button size="small" shape="circle" aria-label={"Действия " + n.Name} icon={<MoreOutlined />} />
+              </Dropdown>
+            </div>
+          ),
+        },
+        {
           title: "Подключение",
           render: (_, n) => (
-            <>
-              <Typography.Text>{n.Name}</Typography.Text>
-              {(!g && p.Selected === String(n.ID)) ||
-              (g &&
-                status[g.id]?.Tag?.startsWith(
-                  "auto-vpn-" + g.id + "-" + n.ID + "-",
-                )) ? (
-                <Tag color="var(--ng-accent)" style={{ marginLeft: 8 }}>
-                  Выбран
-                </Tag>
-              ) : null}
-              <div className="node-info">
-                {n.Protocol} / {n.Transport} / {n.Security} · {n.Host}:{n.Port}
+            <div className="outbound-identity">
+              <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name">{n.Name}</Typography.Text>
+              <div className="outbound-tags">
+                <Tag color="green">{n.Protocol}</Tag>
+                {n.Transport && <Tag>{n.Transport}</Tag>}
+                {n.Security && n.Security !== "none" && <Tag color="purple">{n.Security}</Tag>}
+                {((!g && p.Selected === String(n.ID)) || (g && status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + n.ID + "-"))) && <Tag color="var(--ng-accent)">Выбран</Tag>}
               </div>
-              {n.Compatibility && (
-                <Typography.Text type="warning">
-                  {n.Compatibility}
-                </Typography.Text>
-              )}
-            </>
+              {n.Compatibility && <Typography.Text type="warning">{n.Compatibility}</Typography.Text>}
+            </div>
           ),
+        },
+        {
+          title: "Адрес",
+          width: 230,
+          render: (_, n) => <Typography.Text className="outbound-address" copyable={{ text: n.Host + ":" + n.Port }}>{n.Host}:{n.Port}</Typography.Text>,
         },
         {
           title: "Задержка",
@@ -205,8 +222,8 @@ export default function Subscriptions({
           render: (_, n) => <NodeLatency node={n} />,
         },
         {
-          title: "Действия",
-          width: 150,
+          title: "Проверить",
+          width: 100,
           render: (_, n) => (
             <Space size={4}>
               <TooltipButton
@@ -225,31 +242,7 @@ export default function Subscriptions({
                 icon={<ThunderboltOutlined />}
                 onClick={() => doRun("node-probe", { id: n.ID })}
               />
-              <Dropdown
-                trigger={["click"]}
-                menu={{
-                  items: [
-                    { key: "details", label: "Параметры подключения" },
-                    ...(!g
-                      ? [{ key: "delete", label: "Удалить", danger: true }]
-                      : []),
-                  ],
-                  onClick: ({ key }) =>
-                    key === "details"
-                      ? setDetail(n)
-                      : confirm(
-                          "Удалить подключение «" + n.Name + "»?",
-                          "node-delete",
-                          { id: n.ID },
-                        ),
-                }}
-              >
-                <Button
-                  size="small"
-                  aria-label={"Действия " + n.Name}
-                  icon={<MoreOutlined />}
-                />
-              </Dropdown>
+
             </Space>
           ),
         },
@@ -262,6 +255,10 @@ export default function Subscriptions({
   };
   const groupItems = (p.Groups || []).map((g) => ({
     key: "group:" + g.id,
+    name: g.name, kind: "Группа", count: g.nodes.length,
+    state: status[g.id]?.Name || "Ожидание Xray",
+    nodes: (p.Nodes || []).filter((n) => g.nodes.includes(String(n.ID))),
+    edit: () => editGroup(g),
     label: (
       <Space>
         <Typography.Text strong>{g.name}</Typography.Text>
@@ -298,7 +295,7 @@ export default function Subscriptions({
         />
       </Dropdown>
     ),
-    children: (
+    content: (
       <>
         <Alert
           className="group-current"
@@ -325,13 +322,17 @@ export default function Subscriptions({
         )}
         {table(
           (p.Nodes || []).filter((n) => g.nodes.includes(String(n.ID))),
-          g,
+          g, g.name,
         )}
       </>
     ),
   }));
   const sourceItems = (p.Sources || []).map((s) => ({
     key: "source:" + s.ID,
+    name: s.Name, kind: s.URL === "manual:" ? "Вручную" : "Подписка", count: s.Count,
+    state: s.Error || (s.Updated ? date(s.Updated) : "Не обновлена"),
+    nodes: s.Nodes || [],
+    edit: s.URL === "manual:" ? undefined : () => setSource(s),
     label: (
       <Space>
         <Typography.Text strong>{s.Name}</Typography.Text>
@@ -381,7 +382,7 @@ export default function Subscriptions({
         </Dropdown>
       </Space>
     ),
-    children: (
+    content: (
       <>
         <div className="source-meta">
           <Typography.Text type="secondary">
@@ -401,24 +402,18 @@ export default function Subscriptions({
         {s.ProviderMessage && (
           <Typography.Paragraph>{s.ProviderMessage}</Typography.Paragraph>
         )}
-        {table(s.Nodes || [])}
+        {table(s.Nodes || [], undefined, s.Name)}
       </>
     ),
   }));
   return (
     <>
-      <Card>
+      <Card className="subscriptions-card">
         <div className="source-toolbar">
-          <Input.Search
-            allowClear
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск подключений"
-          />
           <Space wrap>
             <Button
               type="primary"
-              icon={<PlusOutlined />}
+              icon={<CloudDownloadOutlined />}
               onClick={() => setSource(null)}
             >
               Подписка
@@ -428,6 +423,13 @@ export default function Subscriptions({
             </Button>
             <Button onClick={() => setManual(true)}>Добавить ссылку</Button>
           </Space>
+          <Input.Search
+            allowClear
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск подключений"
+          />
+
         </div>
         {p.SelectedNode && (
           <Alert
@@ -458,15 +460,30 @@ export default function Subscriptions({
             }
           />
         )}
-        <Collapse
-          className="section-gap"
-          activeKey={opened}
-          onChange={(keys) => {
-            const v = Array.isArray(keys) ? keys : [keys];
-            setOpened(v);
-            localStorage.setItem("ngpanel-sources-open", JSON.stringify(v));
+        <Table
+          className="subscriptions-table section-gap"
+          size="small"
+          rowKey="key"
+          pagination={false}
+          scroll={{ x: 820 }}
+          dataSource={[...groupItems, ...sourceItems].filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()) || filtered(item.nodes).length > 0)}
+          expandable={{
+            expandedRowKeys: opened,
+            expandedRowRender: (item) => <div className="subscription-expanded">{item.content}</div>,
+            onExpandedRowsChange: (keys) => {
+              const v = keys.map(String);
+              setOpened(v);
+              localStorage.setItem("ngpanel-sources-open", JSON.stringify(v));
+            },
           }}
-          items={[...groupItems, ...sourceItems]}
+          columns={[
+            { title: "#", width: 90, render: (_, item, index) => <div className="outbound-actions"><span className="outbound-index">{index + 1}</span>{item.edit && <TooltipButton title={"Изменить «" + item.name + "»"} icon={<EditOutlined />} onClick={item.edit} />}</div> },
+            { title: "Название", render: (_, item) => <Typography.Text strong ellipsis={{ tooltip: item.name }}>{item.name}</Typography.Text> },
+            { title: "Тип", width: 110, render: (_, item) => <Tag color={item.kind === "Группа" ? "purple" : undefined}>{item.kind}</Tag> },
+            { title: "Подключения", width: 115, dataIndex: "count" },
+            { title: "Активный узел / обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}>{item.state}</Typography.Text> },
+            { title: "Действия", width: 95, render: (_, item) => item.extra },
+          ]}
         />
       </Card>
       <Editor
@@ -631,6 +648,7 @@ function TooltipButton(props: {
     <Tooltip title={props.title}>
       <Button
         size="small"
+        shape="circle"
         aria-label={props.title}
         icon={props.icon}
         disabled={props.disabled}
