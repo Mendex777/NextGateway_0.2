@@ -15,6 +15,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Transfer,
   Typography,
@@ -60,6 +61,7 @@ export default function Subscriptions({
   const [source, setSource] = useState<Source | null | undefined>(),
     [group, setGroup] = useState<Group | null | undefined>(),
     [manual, setManual] = useState(false),
+    [section, setSection] = useState("connections"),
     [detail, setDetail] = useState<Node | null>(null),
     [testMode, setTestMode] = useState("real"),
     [search, setSearch] = useState(""),
@@ -289,6 +291,8 @@ export default function Subscriptions({
     key: "group:" + g.id,
     name: g.name, kind: "Группа", count: g.nodes.length,
     state: status[g.id]?.Name || "Ожидание Xray",
+    mode: g.mode === "fastest" ? "Самый быстрый" : g.mode === "failover" ? "Только при отказе" : "Порог: " + g.threshold_ms + " мс",
+    latency: status[g.id]?.Samples?.find(sample => status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + sample.NodeID + "-")),
     nodes: (p.Nodes || []).filter((n) => g.nodes.includes(String(n.ID))),
     edit: () => editGroup(g),
     label: (
@@ -359,6 +363,7 @@ export default function Subscriptions({
     key: "source:" + s.ID,
     name: s.Name, kind: s.URL === "manual:" ? "Вручную" : "Подписка", count: s.Count,
     state: s.Error || (s.Updated ? date(s.Updated) : "Не обновлена"),
+    mode: "", latency: undefined,
     nodes: s.Nodes || [],
     edit: s.URL === "manual:" ? undefined : () => setSource(s),
     label: (
@@ -437,8 +442,13 @@ export default function Subscriptions({
   return (
     <>
       <Card className="subscriptions-card">
+        <Tabs activeKey={section} onChange={(key) => { setSection(key); setSearch(""); }} items={[
+          { key: "connections", label: "Подключения" },
+          { key: "groups", label: "Группы" },
+        ]} />
         <div className="source-toolbar">
           <Space wrap>
+            {section === "connections" ? <>
             <Button
               type="primary"
               icon={<CloudDownloadOutlined />}
@@ -446,31 +456,29 @@ export default function Subscriptions({
             >
               Подписка
             </Button>
-            <Button icon={<PlusOutlined />} onClick={() => editGroup(null)}>
-              Группа
-            </Button>
             <Button onClick={() => setManual(true)}>Добавить ссылку</Button>
+            </> : <Button type="primary" icon={<PlusOutlined />} onClick={() => editGroup(null)}>Добавить группу</Button>}
           </Space>
 
 
-        <div className="connection-test-toolbar">
+        {section === "connections" && <div className="connection-test-toolbar">
           <Radio.Group size="small" optionType="button" buttonStyle="solid" value={testMode} onChange={(e) => setTestMode(e.target.value)}>
             <Tooltip title="TCP-соединение с сервером. Для UDP-подключений используется HTTP-проверка через VPN"><Radio.Button value="tcp">TCP</Radio.Button></Tooltip>
             <Tooltip title="HTTP-запрос через VPN по уже установленному соединению"><Radio.Button value="http">HTTP</Radio.Button></Tooltip>
             <Tooltip title="HTTPS через VPN, включая установление соединения и TLS"><Radio.Button value="real">Реальная задержка</Radio.Button></Tooltip>
           </Radio.Group>
           <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={batch?.State === "running"} disabled={batch?.State === "running" || !(p.Nodes || []).length} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
-        </div>
+        </div>}
         </div>
         <div className="source-search">
           <Input.Search
             allowClear
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск подключений"
+            placeholder={section === "groups" ? "Поиск групп и участников" : "Поиск подключений"}
           />
         </div>
-        {p.SelectedNode && (
+        {section === "connections" && p.SelectedNode && (
           <Alert
             showIcon
             type="success"
@@ -505,12 +513,14 @@ export default function Subscriptions({
           rowKey="key"
           pagination={false}
           scroll={{ x: 820 }}
-          dataSource={[...groupItems, ...sourceItems].filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()) || filtered(item.nodes).length > 0)}
+          dataSource={(section === "groups" ? groupItems : sourceItems).filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()) || filtered(item.nodes).length > 0)}
+          locale={{ emptyText: section === "groups" ? "Групп пока нет. Добавьте группу и выберите её участников." : "Подключений нет. Добавьте подписку или ссылку подключения." }}
           expandable={{
             expandedRowKeys: opened,
             expandedRowRender: (item) => <div className="subscription-expanded">{item.content}</div>,
             onExpandedRowsChange: (keys) => {
-              const v = keys.map(String);
+              const prefix = section === "groups" ? "group:" : "source:";
+              const v = [...new Set([...opened.filter(key => !key.startsWith(prefix)), ...keys.map(String)])];
               setOpened(v);
               localStorage.setItem("ngpanel-sources-open", JSON.stringify(v));
             },
@@ -518,9 +528,13 @@ export default function Subscriptions({
           columns={[
             { title: "#", width: 90, render: (_, item, index) => <div className="outbound-actions"><span className="outbound-index">{index + 1}</span>{item.edit && <TooltipButton title={"Изменить «" + item.name + "»"} icon={<EditOutlined />} onClick={item.edit} />}</div> },
             { title: "Название", render: (_, item) => <Typography.Text strong ellipsis={{ tooltip: item.name }}><FlagText text={item.name} /></Typography.Text> },
-            { title: "Тип", width: 110, render: (_, item) => <Tag color={item.kind === "Группа" ? "purple" : undefined}>{item.kind}</Tag> },
+            ...(section === "connections" ? [{ title: "Тип", width: 110, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => <Tag>{item.kind}</Tag> }] : []),
             { title: "Подключения", width: 115, dataIndex: "count" },
-            { title: "Активный узел / обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}><FlagText text={item.state} /></Typography.Text> },
+            { title: section === "groups" ? "Активный узел" : "Обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}><FlagText text={item.state} /></Typography.Text> },
+            ...(section === "groups" ? [
+              { title: "Задержка", width: 100, render: (_: unknown, item: (typeof groupItems)[number] | (typeof sourceItems)[number]) => item.latency ? <Tag color={item.latency.Alive ? "green" : "red"}>{item.latency.Alive ? item.latency.DelayMS + " мс" : "Недоступен"}</Tag> : "—" },
+              { title: "Переключение", width: 170, dataIndex: "mode" },
+            ] : []),
             { title: "Действия", width: 95, render: (_, item) => item.extra },
           ]}
         />
