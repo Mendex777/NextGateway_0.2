@@ -10,6 +10,7 @@ import (
 type BatchStatus struct {
 	SourceID        string
 	Mode            string
+	RunID           string
 	State           string
 	Done, Total, OK int
 }
@@ -41,8 +42,9 @@ func startBatch(id string, modes ...string) error {
 		return fmt.Errorf("Проверка уже выполняется")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	runID := probeRunID(modes)
 	batchMu.Lock()
-	batchStatus = BatchStatus{SourceID: id, Mode: mode, State: "running", Total: len(group)}
+	batchStatus = BatchStatus{SourceID: id, Mode: mode, RunID: runID, State: "running", Total: len(group)}
 	batchCancel = cancel
 	batchMu.Unlock()
 	go func() {
@@ -71,8 +73,9 @@ func startBatch(id string, modes ...string) error {
 				continue
 			}
 			previous := n.Probe
-			saveProbe(nodeID, ProbeResult{State: "running", Message: "Проверяется…"})
+			saveProbe(nodeID, ProbeResult{State: "running", Mode: mode, RunID: runID, Message: "Проверяется…"})
 			result := probeNodeMode(ctx, raw, mode)
+			result.RunID = runID
 			if ctx.Err() != nil {
 				saveProbe(nodeID, previous)
 				return

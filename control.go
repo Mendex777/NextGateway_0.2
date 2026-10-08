@@ -417,14 +417,14 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "device-save":
 		e = saveDevice(r)
 	case "source-probe", "probe-all":
-		e = startBatch(r.FormValue("id"), r.FormValue("mode"))
+		e = startBatch(r.FormValue("id"), r.FormValue("mode"), r.FormValue("request_id"))
 		msg = "Проверка подписки запущена"
 	case "probe-cancel":
 		cancelBatch()
 		msg = "Отмена проверки запрошена"
 	case "node-probe":
-		e = startProbe(r.FormValue("id"), r.FormValue("mode"))
-		msg = "Проверка запущена; обновите страницу подключений через несколько секунд"
+		e = startProbe(r.FormValue("id"), r.FormValue("mode"), r.FormValue("request_id"))
+		msg = "Проверка запущена"
 	case "apply", "check":
 		var c map[string]any
 		c, e = buildConfig()

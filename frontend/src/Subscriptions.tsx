@@ -1,5 +1,5 @@
 import { FlagText } from "./FlagText";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   App,
   Alert,
@@ -85,6 +85,8 @@ export default function Subscriptions({
         return [];
       }
     });
+  const probeRequests = useRef<Record<string, string>>({});
+  const batchRequest = useRef("");
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
@@ -92,7 +94,7 @@ export default function Subscriptions({
         const [probe, ...groups] = await Promise.all([
           getJSON<{
             Nodes: Record<string, Probe>;
-            Batch: { State: string; Done: number; Total: number; OK: number };
+            Batch: { RunID?: string; State: string; Done: number; Total: number; OK: number };
           }>("/probe-status"),
           ...(p.Groups || []).map((g) =>
             Promise.all([
@@ -108,8 +110,16 @@ export default function Subscriptions({
           ),
         ]);
         if (cancelled) return;
-        setProbes(probe.Nodes || {});
-        setBatch(probe.Batch);
+        setProbes((previous) => {
+          const next = { ...previous };
+          for (const [id, request] of Object.entries(probeRequests.current)) {
+            const result = probe.Nodes?.[id];
+            if (result?.RunID === request) next[id] = result;
+            else if (probe.Batch.RunID === request && probe.Batch.State !== "running" && next[id]?.State === "running") delete next[id];
+          }
+          return next;
+        });
+        if (batchRequest.current && probe.Batch.RunID === batchRequest.current) setBatch(probe.Batch);
         setStatus(
           Object.fromEntries(
             (p.Groups || []).map((g, i) => [g.id, groups[i][0]]),
@@ -125,14 +135,31 @@ export default function Subscriptions({
       }
     };
     void poll();
-    const timer = setInterval(poll, 3000);
+    const timer = setInterval(poll, 800);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
   }, [p.Groups]);
-  const doRun = (name: string, values: Values = {}) =>
+  const doRun = (name: string, values: Values = {}) => {
+    if (["node-probe", "source-probe", "probe-all"].includes(name)) {
+      const request = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      const nodes = (p.Nodes || []).filter(n => name === "node-probe" ? String(n.ID) === String(values.id) : name === "source-probe" ? String(n.SourceID) === String(values.id) : true);
+      for (const n of nodes) probeRequests.current[n.ID] = request;
+      setProbes(previous => ({ ...previous, ...Object.fromEntries(nodes.map(n => [n.ID, { State: "running", Mode: testMode, RunID: request, Message: "Проверяется…", Checked: "", HTTPSMS: 0 }])) }));
+      if (name !== "node-probe") {
+        batchRequest.current = request;
+        setBatch({ State: "running", Done: 0, Total: nodes.length, OK: 0 });
+      }
+      void run(name, { ...values, request_id: request }).catch(() => {
+        for (const n of nodes) if (probeRequests.current[n.ID] === request) delete probeRequests.current[n.ID];
+        setProbes(previous => Object.fromEntries(Object.entries(previous).filter(([, result]) => result.RunID !== request)));
+        if (batchRequest.current === request) { batchRequest.current = ""; setBatch(null); }
+      });
+      return;
+    }
     void run(name, values).catch(() => {});
+  };
   const confirm = (title: string, name: string, values: Values) =>
     modal.confirm({
       title,
@@ -148,7 +175,7 @@ export default function Subscriptions({
           .toLocaleLowerCase()
           .includes(search.toLocaleLowerCase()),
       )
-      .map((n) => ({ ...n, Probe: probes[n.ID] || n.Probe }));
+      .map((n) => ({ ...n, Probe: probes[n.ID] }));
   const table = (nodes: Node[], g?: Group, scope = "") => (
     <Table
       className="node-table outbound-nodes"
@@ -159,31 +186,12 @@ export default function Subscriptions({
         showSizeChanger: true,
         hideOnSinglePage: true,
       }}
-      scroll={{ x: 1070 }}
-      dataSource={filtered(nodes, scope).map((n) => {
-        const sample = g
-          ? (checks[g.id]?.Samples?.length
-              ? checks[g.id].Samples
-              : status[g.id]?.Samples
-            )?.find((v) => v.NodeID === String(n.ID))
-          : undefined;
-        return sample && (!n.Probe?.Checked || Number(sample.Checked) * 1000 > Date.parse(n.Probe.Checked))
-          ? {
-              ...n,
-              Probe: {
-                State: sample.Alive ? "ok" : "error",
-                Mode: "real",
-                HTTPSMS: sample.DelayMS,
-                Message: "Проверка группы Xray",
-                Checked: String(sample.Checked),
-              },
-            }
-          : n;
-      })}
+      scroll={{ x: 1150 }}
+      dataSource={filtered(nodes, scope)}
       columns={[
         {
           title: "#",
-          width: 110,
+          width: 100,
           render: (_, n) => (
             <div className="outbound-actions">
               <span className="outbound-index">{nodes.findIndex((v) => v.ID === n.ID) + 1}</span>
@@ -204,7 +212,7 @@ export default function Subscriptions({
         },
         {
           title: "Название",
-          width: 300,
+          width: 240,
           render: (_, n) => (
             <div className="outbound-title">
               <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name"><FlagText text={n.Name} /></Typography.Text>
@@ -214,7 +222,7 @@ export default function Subscriptions({
         },
         {
           title: "Подключение",
-          width: 220,
+          width: 180,
           render: (_, n) => (
             <div className="outbound-tags">
               <Tag color="green">{n.Protocol}</Tag>
@@ -226,8 +234,18 @@ export default function Subscriptions({
         },
         {
           title: "Адрес",
-          width: 230,
+          width: 200,
           render: (_, n) => <Typography.Text className="outbound-address" copyable={{ text: n.Host + ":" + n.Port }}>{n.Host}:{n.Port}</Typography.Text>,
+        },
+        {
+          title: "Выход",
+          width: 155,
+          render: (_, n) => n.Probe?.ExitIP ? <Typography.Text copyable={{ text: n.Probe.ExitIP }}>{n.Probe.ExitIP}</Typography.Text> : "—",
+        },
+        {
+          title: "Страна",
+          width: 130,
+          render: (_, n) => n.Probe?.Country ? <Tag><FlagText text={Array.from(n.Probe.Country).map(c => String.fromCodePoint(127397 + c.charCodeAt(0))).join("") + " " + new Intl.DisplayNames(["ru"], { type: "region" }).of(n.Probe.Country)} /></Tag> : "—",
         },
         {
           title: "Задержка",
@@ -253,6 +271,7 @@ export default function Subscriptions({
               <TooltipButton
                 title="Проверить"
                 icon={<ThunderboltOutlined />}
+                loading={n.Probe?.State === "running"}
                 onClick={() => doRun("node-probe", { id: n.ID, mode: testMode })}
               />
 
@@ -436,11 +455,11 @@ export default function Subscriptions({
 
         <div className="connection-test-toolbar">
           <Radio.Group size="small" optionType="button" buttonStyle="solid" value={testMode} onChange={(e) => setTestMode(e.target.value)}>
-            <Tooltip title="TCP-соединение с сервером; доступность VPN не проверяется"><Radio.Button value="tcp">TCP</Radio.Button></Tooltip>
+            <Tooltip title="TCP-соединение с сервером. Для UDP-подключений используется HTTP-проверка через VPN"><Radio.Button value="tcp">TCP</Radio.Button></Tooltip>
             <Tooltip title="HTTP-запрос через VPN по уже установленному соединению"><Radio.Button value="http">HTTP</Radio.Button></Tooltip>
             <Tooltip title="HTTPS через VPN, включая установление соединения и TLS"><Radio.Button value="real">Реальная задержка</Radio.Button></Tooltip>
           </Radio.Group>
-          <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={batch?.State === "running" || !(p.Nodes || []).length} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
+          <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={batch?.State === "running"} disabled={batch?.State === "running" || !(p.Nodes || []).length} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
         </div>
         </div>
         <div className="source-search">
@@ -662,6 +681,7 @@ function TooltipButton(props: {
   title: string;
   icon: React.ReactNode;
   disabled?: boolean;
+  loading?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -672,6 +692,7 @@ function TooltipButton(props: {
         aria-label={props.title}
         icon={props.icon}
         disabled={props.disabled}
+        loading={props.loading}
         onClick={props.onClick}
       />
     </Tooltip>

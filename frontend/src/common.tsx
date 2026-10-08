@@ -11,7 +11,7 @@ import {
   Tag,
 } from "antd";
 import { useState } from "react";
-import { MoreOutlined } from "@ant-design/icons";
+import { MoreOutlined, LoadingOutlined, CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
 import type { Page, Values, Node } from "./types";
 export type Run = (name: string, values?: Values) => Promise<void>;
 export const date = (value: string) =>
@@ -53,17 +53,12 @@ export function Target({
   );
 }
 export function NodeLatency({ node }: { node: Node }) {
+  if (node.Probe?.State === "running") return <LoadingOutlined spin aria-label="Проверяется" style={{ color: "var(--ng-accent)" }} />;
+  if (!node.Probe?.State) return <Typography.Text type="secondary">—</Typography.Text>;
   return (
     <Tooltip title={(node.Probe?.Mode ? ({ tcp: "TCP", http: "HTTP", real: "Реальная задержка" }[node.Probe.Mode] || node.Probe.Mode) + ": " : "") + (node.Probe?.Message || "")}>
-      <Tag
-        color={
-          node.Probe?.State === "ok"
-            ? "green"
-            : node.Probe?.State === "error"
-              ? "red"
-              : undefined
-        }
-      >
+      <span className={node.Probe.State === "ok" ? "probe-pill probe-ok" : "probe-pill probe-fail"}>
+        {node.Probe.State === "ok" ? <CheckCircleFilled /> : <CloseCircleFilled />}
         {node.Probe?.State === "ok"
           ? node.Probe.HTTPSMS + " мс"
           : node.Probe?.State === "running"
@@ -71,7 +66,7 @@ export function NodeLatency({ node }: { node: Node }) {
             : node.Probe?.State === "error"
               ? "Ошибка"
               : node.Probe?.State === "unsupported" ? "Неприменимо" : "—"}
-      </Tag>
+      </span>
     </Tooltip>
   );
 }

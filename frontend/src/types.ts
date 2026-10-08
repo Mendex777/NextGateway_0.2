@@ -1,4 +1,7 @@
 export interface Probe {
+	RunID?: string;
+	ExitIP?: string;
+	Country?: string;
   State: string;
   Message: string;
   Checked: string;

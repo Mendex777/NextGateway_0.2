@@ -9,6 +9,17 @@ import (
 	"testing"
 )
 
+func TestTraceEgressRejectsInvalidMetadata(t *testing.T) {
+	ip, country := traceEgress([]byte("fl=123\nip=203.0.113.7\nloc=NL\n"))
+	if ip != "203.0.113.7" || country != "NL" {
+		t.Fatalf("unexpected metadata: %q %q", ip, country)
+	}
+	ip, country = traceEgress([]byte("ip=not-an-ip\nloc=<script>\n"))
+	if ip != "" || country != "" {
+		t.Fatal("invalid trace metadata accepted")
+	}
+}
+
 func TestTCPProbeStopsBeforeStartingXray(t *testing.T) {
 	server, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

@@ -36,3 +36,6 @@
 .outbound-title .outbound-name { min-width:0; flex:1; }
 .outbound-title .ant-tag { margin:0; flex-shrink:0; font-size:11px; line-height:18px; }
 .outbound-nodes .outbound-tags { flex-wrap:nowrap; white-space:nowrap; }
+.probe-pill { display:inline-flex; align-items:center; gap:4px; border-radius:12px; padding:2px 7px; font-size:11px; white-space:nowrap; }
+.probe-ok { color:#13c2c2; background:rgba(19,194,194,.12); }
+.probe-fail { color:#ff4d4f; background:rgba(255,77,79,.12); }

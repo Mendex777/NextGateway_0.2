@@ -68,7 +68,7 @@ func TestBatchScopeAndCancellation(t *testing.T) {
 	if err = startBatch("missing"); err == nil {
 		t.Fatal("unknown source accepted")
 	}
-	if err = startBatch("", "tcp"); err != nil {
+	if err = startBatch("", "tcp", "current-page-test"); err != nil {
 		t.Fatal(err)
 	}
 	wait()
@@ -77,5 +77,9 @@ func TestBatchScopeAndCancellation(t *testing.T) {
 	batchMu.Unlock()
 	if status.Total != 2 || status.Done != 2 || status.Mode != "tcp" || setting("node_probe:2") == "" || setting("selected_node") != "2" {
 		t.Fatalf("global batch omitted nodes or changed selection: %+v", status)
+	}
+	json.Unmarshal([]byte(setting("node_probe:2")), &restored)
+	if status.RunID != "current-page-test" || restored.RunID != status.RunID {
+		t.Fatal("probe results lost their page request identity")
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +19,7 @@ import (
 type ProbeResult struct {
 	State, Message, Checked string
 	Mode                    string
+	RunID, ExitIP, Country  string
 	TCPMS, HTTPSMS          int64
 	UDP                     bool
 }
@@ -36,13 +38,37 @@ func startProbe(id string, modes ...string) error {
 	if !probeLock.TryLock() {
 		return fmt.Errorf("Проверка подключения уже выполняется")
 	}
-	saveProbe(id, ProbeResult{State: "running", Message: "Проверяется…"})
+	runID := probeRunID(modes)
+	saveProbe(id, ProbeResult{State: "running", Mode: mode, RunID: runID, Message: "Проверяется…"})
 	go func() {
 		defer probeLock.Unlock()
 		result := probeNodeMode(context.Background(), raw, mode)
+		result.RunID = runID
 		saveProbe(id, result)
 	}()
 	return nil
+}
+func probeRunID(modes []string) string {
+	if len(modes) > 1 && len(modes[1]) <= 128 {
+		return modes[1]
+	}
+	return ""
+}
+func traceEgress(body []byte) (string, string) {
+	var ip, country string
+	for _, line := range strings.Split(string(body), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		if key == "ip" && net.ParseIP(value) != nil {
+			ip = value
+		}
+		if key == "loc" && len(value) == 2 && value[0] >= 'A' && value[0] <= 'Z' && value[1] >= 'A' && value[1] <= 'Z' {
+			country = value
+		}
+	}
+	return ip, country
 }
 func saveProbe(id string, result ProbeResult) {
 	b, _ := json.Marshal(result)
@@ -71,6 +97,11 @@ func probeNodeMode(parent context.Context, raw, mode string) ProbeResult {
 		return result
 	}
 	result.UDP = outbound["protocol"] == "hysteria"
+	// UDP-only proxies use an HTTP probe, matching the outbound table's TCP mode.
+	if result.UDP && mode == "tcp" {
+		mode = "http"
+		result.Mode = mode
+	}
 	prefix := ""
 	start := time.Now()
 	if !result.UDP {
@@ -164,6 +195,7 @@ func probeNodeMode(parent context.Context, raw, mode string) ProbeResult {
 	}
 	result.HTTPSMS = time.Since(start).Milliseconds()
 	if mode == "http" {
+		result.ExitIP, result.Country = traceEgress(body)
 		response.Body.Close()
 		start = time.Now()
 		warmRequest, _ := http.NewRequestWithContext(ctx, "GET", "https://www.cloudflare.com/cdn-cgi/trace", nil)
