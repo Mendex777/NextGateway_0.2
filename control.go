@@ -438,7 +438,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "group-select":
 		return true, "Узел группы выбран. Автовыбор продолжит работу при следующей проверке.", selectGroupNode(r.FormValue("group_id"), r.FormValue("node_id"))
 	case "group-check":
-		return true, "Проверка группы запущена; результат появится внутри группы.", startGroupCheck(r.FormValue("group_id"))
+		return true, "Проверка группы запущена; результат появится внутри группы.", startGroupCheck(r.FormValue("group_id"), r.FormValue("request_id"))
 	case "balance-delete":
 		e = deleteBalance(r.FormValue("group_id"))
 	case "balance-settings":

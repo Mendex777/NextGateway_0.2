@@ -67,7 +67,7 @@ func setGroupCheck(id string, result GroupCheckResult) {
 	defer groupChecks.Unlock()
 	groupChecks.results[id] = result
 }
-func startGroupCheck(id string) error {
+func startGroupCheck(id string, requests ...string) error {
 	g, ok := groupByID(id)
 	if !ok {
 		return fmt.Errorf("Группа не найдена")
@@ -85,6 +85,10 @@ func startGroupCheck(id string) error {
 		raws[node] = raw
 	}
 	current := readGroupStatus(id).Tag
+	runID := ""
+	if len(requests) > 0 && len(requests[0]) <= 128 {
+		runID = requests[0]
+	}
 	groupControl.Lock()
 	state := groupControl.states[id]
 	groupControl.Unlock()
@@ -97,7 +101,10 @@ func startGroupCheck(id string) error {
 		result := GroupCheckResult{State: "running", Message: "Проверяются участники…"}
 		all := map[string]GroupSample{}
 		for _, node := range g.Nodes {
+			saveProbe(node, ProbeResult{State: "running", Mode: "real", RunID: runID})
 			probe := probeNode(raws[node])
+			probe.RunID = runID
+			saveProbe(node, probe)
 			tag := "auto-vpn-" + id + "-" + node + "-"
 			sample := GroupSample{NodeID: node, Tag: tag, Alive: probe.State == "ok", DelayMS: probe.HTTPSMS, Checked: time.Now().Unix()}
 			all[tag] = sample

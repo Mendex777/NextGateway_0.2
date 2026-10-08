@@ -142,12 +142,12 @@ export default function Subscriptions({
     };
   }, [p.Groups]);
   const doRun = (name: string, values: Values = {}) => {
-    if (["node-probe", "source-probe", "probe-all"].includes(name)) {
+    if (["node-probe", "source-probe", "probe-all", "group-check"].includes(name)) {
       const request = Date.now().toString(36) + Math.random().toString(36).slice(2);
-      const nodes = (p.Nodes || []).filter(n => name === "node-probe" ? String(n.ID) === String(values.id) : name === "source-probe" ? String(n.SourceID) === String(values.id) : true);
+      const nodes = (p.Nodes || []).filter(n => name === "node-probe" ? String(n.ID) === String(values.id) : name === "source-probe" ? String(n.SourceID) === String(values.id) : name === "group-check" ? (p.Groups || []).find(g => g.id === String(values.group_id))?.nodes.includes(String(n.ID)) : true);
       for (const n of nodes) probeRequests.current[n.ID] = request;
       setProbes(previous => ({ ...previous, ...Object.fromEntries(nodes.map(n => [n.ID, { State: "running", Mode: testMode, RunID: request, Message: "Проверяется…", Checked: "", HTTPSMS: 0 }])) }));
-      if (name !== "node-probe") {
+      if (name === "source-probe" || name === "probe-all") {
         batchRequest.current = request;
         setBatch({ State: "running", Done: 0, Total: nodes.length, OK: 0 });
       }
