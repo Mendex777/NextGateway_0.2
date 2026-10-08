@@ -1,3 +1,4 @@
+import { FlagText } from "./FlagText";
 import { useEffect, useState } from "react";
 import {
   App,
@@ -206,7 +207,7 @@ export default function Subscriptions({
           width: 300,
           render: (_, n) => (
             <div className="outbound-title">
-              <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name">{n.Name}</Typography.Text>
+              <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name"><FlagText text={n.Name} /></Typography.Text>
               {((!g && p.Selected === String(n.ID)) || (g && status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + n.ID + "-"))) && <Tag color="var(--ng-accent)">Выбран</Tag>}
             </div>
           ),
@@ -273,7 +274,7 @@ export default function Subscriptions({
     edit: () => editGroup(g),
     label: (
       <Space>
-        <Typography.Text strong>{g.name}</Typography.Text>
+        <Typography.Text strong><FlagText text={g.name} /></Typography.Text>
         <Tag>Группа</Tag>
         <Typography.Text type="secondary">
           {g.nodes.length} подключений
@@ -313,12 +314,8 @@ export default function Subscriptions({
           className="group-current"
           showIcon
           type="info"
-          title={"Активный узел: " + (status[g.id]?.Name || "Ожидание Xray")}
-          description={
-            status[g.id]?.Message ||
-            status[g.id]?.Policy ||
-            "После применения конфигурации появятся результаты проверок."
-          }
+          title={<FlagText text={"Активный узел: " + (status[g.id]?.Name || "Ожидание Xray")} />}
+          description={<FlagText text={status[g.id]?.Message || status[g.id]?.Policy || "После применения конфигурации появятся результаты проверок."} />}
         />
         {checks[g.id]?.State && (
           <Alert
@@ -347,7 +344,7 @@ export default function Subscriptions({
     edit: s.URL === "manual:" ? undefined : () => setSource(s),
     label: (
       <Space>
-        <Typography.Text strong>{s.Name}</Typography.Text>
+        <Typography.Text strong><FlagText text={s.Name} /></Typography.Text>
         <Tag>{s.Count} подключений</Tag>
       </Space>
     ),
@@ -458,7 +455,7 @@ export default function Subscriptions({
           <Alert
             showIcon
             type="success"
-            title={"Выбранный VPN: " + p.SelectedNode.Name}
+            title={<FlagText text={"Выбранный VPN: " + p.SelectedNode.Name} />}
           />
         )}{" "}
         {batch?.State && (
@@ -501,10 +498,10 @@ export default function Subscriptions({
           }}
           columns={[
             { title: "#", width: 90, render: (_, item, index) => <div className="outbound-actions"><span className="outbound-index">{index + 1}</span>{item.edit && <TooltipButton title={"Изменить «" + item.name + "»"} icon={<EditOutlined />} onClick={item.edit} />}</div> },
-            { title: "Название", render: (_, item) => <Typography.Text strong ellipsis={{ tooltip: item.name }}>{item.name}</Typography.Text> },
+            { title: "Название", render: (_, item) => <Typography.Text strong ellipsis={{ tooltip: item.name }}><FlagText text={item.name} /></Typography.Text> },
             { title: "Тип", width: 110, render: (_, item) => <Tag color={item.kind === "Группа" ? "purple" : undefined}>{item.kind}</Tag> },
             { title: "Подключения", width: 115, dataIndex: "count" },
-            { title: "Активный узел / обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}>{item.state}</Typography.Text> },
+            { title: "Активный узел / обновление", width: 245, render: (_, item) => <Typography.Text type="secondary" ellipsis={{ tooltip: item.state }}><FlagText text={item.state} /></Typography.Text> },
             { title: "Действия", width: 95, render: (_, item) => item.extra },
           ]}
         />
@@ -683,7 +680,7 @@ function TooltipButton(props: {
 function CardDetail({ node, close }: { node: Node | null; close: () => void }) {
   return (
     <Modal
-      title={node?.Name}
+      title={<FlagText text={node?.Name} />}
       open={!!node}
       onCancel={close}
       footer={<Button onClick={close}>Закрыть</Button>}

@@ -1,3 +1,4 @@
+import { FlagText } from "./FlagText";
 import {
   Button,
   Form,
@@ -45,6 +46,8 @@ export function Target({
       showSearch
       optionFilterProp="label"
       options={targets(p)}
+      optionRender={(option) => <FlagText text={String(option.label)} />}
+      labelRender={(option) => <FlagText text={String(option.label)} />}
       {...props}
     />
   );

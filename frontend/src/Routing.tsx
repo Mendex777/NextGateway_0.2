@@ -1,3 +1,4 @@
+import { FlagText } from "./FlagText";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { HTMLAttributes } from "react";
 import {
@@ -238,7 +239,7 @@ export default function Routing({
       width: 220,
       render: (v) => (
         <Tag color="green" bordered={false}>
-          {v}
+          <FlagText text={v} />
         </Tag>
       ),
     },
@@ -384,7 +385,7 @@ export default function Routing({
                   {
                     key: "target",
                     label: "Исходящий",
-                    children: result.TargetLabel,
+                    children: <FlagText text={result.TargetLabel} />,
                   },
                   { key: "reason", label: "Почему", children: result.Reason },
                 ]
