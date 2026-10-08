@@ -12,7 +12,7 @@
 .subscriptions-table .ant-table-cell { vertical-align: middle; }
 .subscriptions-table > .ant-spin-nested-loading > .ant-spin-container > .ant-table .ant-table-tbody > tr > td { padding: 12px 8px; }
 .subscription-expanded { padding: 8px 12px 12px; }
-.subscription-expanded .outbound-nodes .ant-table-cell { padding: 10px 8px !important; }
+.subscription-expanded .outbound-nodes .ant-table-cell { padding: 6px 8px !important; }
 .subscriptions-table .ant-table-expanded-row > td { background: #1a1b1f !important; }
 .subscriptions-table .ant-table-expanded-row .ant-table { background: #23252b; }
 .subscriptions-table .ant-table-row-expand-icon { border: none; background: transparent; }
@@ -31,3 +31,8 @@
 .connection-test-toolbar { margin-bottom:0; margin-left:auto; }
 .source-search { max-width:420px; margin-bottom:16px; }
 @media(max-width:600px) { .connection-test-toolbar { margin-left:0; } }
+
+.outbound-title { display:flex; align-items:center; gap:6px; min-width:0; }
+.outbound-title .outbound-name { min-width:0; flex:1; }
+.outbound-title .ant-tag { margin:0; flex-shrink:0; font-size:11px; line-height:18px; }
+.outbound-nodes .outbound-tags { flex-wrap:nowrap; white-space:nowrap; }

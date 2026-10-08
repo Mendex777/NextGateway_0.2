@@ -158,7 +158,7 @@ export default function Subscriptions({
         showSizeChanger: true,
         hideOnSinglePage: true,
       }}
-      scroll={{ x: 760 }}
+      scroll={{ x: 1070 }}
       dataSource={filtered(nodes, scope).map((n) => {
         const sample = g
           ? (checks[g.id]?.Samples?.length
@@ -202,17 +202,24 @@ export default function Subscriptions({
           ),
         },
         {
-          title: "Подключение",
+          title: "Название",
+          width: 300,
           render: (_, n) => (
-            <div className="outbound-identity">
+            <div className="outbound-title">
               <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name">{n.Name}</Typography.Text>
-              <div className="outbound-tags">
-                <Tag color="green">{n.Protocol}</Tag>
-                {n.Transport && <Tag>{n.Transport}</Tag>}
-                {n.Security && n.Security !== "none" && <Tag color="purple">{n.Security}</Tag>}
-                {((!g && p.Selected === String(n.ID)) || (g && status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + n.ID + "-"))) && <Tag color="var(--ng-accent)">Выбран</Tag>}
-              </div>
-              {n.Compatibility && <Typography.Text type="warning">{n.Compatibility}</Typography.Text>}
+              {((!g && p.Selected === String(n.ID)) || (g && status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + n.ID + "-"))) && <Tag color="var(--ng-accent)">Выбран</Tag>}
+            </div>
+          ),
+        },
+        {
+          title: "Подключение",
+          width: 220,
+          render: (_, n) => (
+            <div className="outbound-tags">
+              <Tag color="green">{n.Protocol}</Tag>
+              {n.Transport && <Tag>{n.Transport}</Tag>}
+              {n.Security && n.Security !== "none" && <Tag color="purple">{n.Security}</Tag>}
+              {n.Compatibility && <Tooltip title={n.Compatibility}><Tag color="orange">Не поддерживается</Tag></Tooltip>}
             </div>
           ),
         },
