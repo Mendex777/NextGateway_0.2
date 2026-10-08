@@ -85,6 +85,7 @@ export function Editor({
   initial,
   onSave,
   children,
+  width = 680,
 }: {
   title: string;
   open: boolean;
@@ -92,6 +93,7 @@ export function Editor({
   initial: Values;
   onSave: (v: Values) => Promise<void>;
   children: React.ReactNode;
+  width?: number;
 }) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false),
@@ -103,7 +105,8 @@ export function Editor({
       onCancel={onClose}
       destroyOnHidden
       footer={null}
-      width={680}
+      width={width}
+      style={width > 680 ? { top: 24 } : undefined}
       afterOpenChange={(shown) => {
         if (shown) {
           form.setFieldsValue(initial);

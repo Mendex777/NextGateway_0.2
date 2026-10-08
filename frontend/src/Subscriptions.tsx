@@ -627,6 +627,7 @@ export default function Subscriptions({
       <Editor
         key={group?.id ?? "group-new"}
         title={group ? "Изменить группу" : "Создать группу"}
+        width={960}
         open={group !== undefined}
         onClose={() => setGroup(undefined)}
         initial={
