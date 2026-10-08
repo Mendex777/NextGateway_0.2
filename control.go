@@ -70,7 +70,7 @@ func allNodes() []Node {
 	for _, id := range groupNodeIDs() {
 		members[id] = true
 	}
-	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id ORDER BY name,n.id")
+	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id ORDER BY n.source_id,COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='node_order:' || n.id),2147483647),n.id")
 	if e != nil {
 		return nil
 	}

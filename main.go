@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ type Source struct {
 	Count                                                             int
 }
 type Node struct {
+	SubscriptionPosition                                 int `json:"-"`
 	BalanceMember                                        bool
 	Compatibility, Encryption, SNI, Flow, Path, Protocol string
 	SourceID                                             int
@@ -157,7 +159,10 @@ func parseNodes(body string) (map[string]Node, error) {
 				n.Port = "443"
 			}
 		}
-		out[line] = n
+		if _, exists := out[line]; !exists {
+			n.SubscriptionPosition = len(out) + 1
+			out[line] = n
+		}
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("Ссылки VLESS / Hysteria 2 не найдены; поддерживаются текст и Base64")
@@ -245,14 +250,23 @@ func refresh(id string) error {
 	}
 	rows.Close()
 	seen := map[string]bool{}
-	for raw, n := range nodes {
+	ordered := make([]string, 0, len(nodes))
+	for raw := range nodes {
+		ordered = append(ordered, raw)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return nodes[ordered[i]].SubscriptionPosition < nodes[ordered[j]].SubscriptionPosition
+	})
+	for position, raw := range ordered {
+		n := nodes[raw]
+		var nid int
 		key := canonicalURI(raw)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		if ids, ok := previous[key]; ok {
-			nid := ids[0]
+			nid = ids[0]
 			for _, candidate := range ids {
 				if fmt.Sprint(candidate) == selected {
 					nid = candidate
@@ -272,9 +286,18 @@ func refresh(id string) error {
 			_, e = tx.Exec("UPDATE nodes SET uri=?,name=?,host=?,port=?,transport=?,security=? WHERE id=?", raw, n.Name, n.Host, n.Port, n.Transport, n.Security, nid)
 			delete(previous, key)
 		} else {
-			_, e = tx.Exec("INSERT INTO nodes(source_id,uri,name,host,port,transport,security) VALUES(?,?,?,?,?,?,?)", id, raw, n.Name, n.Host, n.Port, n.Transport, n.Security)
+			var result sql.Result
+			result, e = tx.Exec("INSERT INTO nodes(source_id,uri,name,host,port,transport,security) VALUES(?,?,?,?,?,?,?)", id, raw, n.Name, n.Host, n.Port, n.Transport, n.Security)
+			if e == nil {
+				inserted, err := result.LastInsertId()
+				e = err
+				nid = int(inserted)
+			}
 		}
 		if e != nil {
+			return e
+		}
+		if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "node_order:"+strconv.Itoa(nid), strconv.Itoa(position+1)); e != nil {
 			return e
 		}
 	}

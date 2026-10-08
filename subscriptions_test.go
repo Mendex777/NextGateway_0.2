@@ -126,3 +126,50 @@ func TestSubscriptionIdentityKeepsAuthenticationAndTransportDistinct(t *testing.
 		t.Fatal("rotating Reality parameters changed identity")
 	}
 }
+
+func TestSubscriptionPreservesProviderOrderAfterRefresh(t *testing.T) {
+	var err error
+	db, err = sql.Open("sqlite3", filepath.Join(t.TempDir(), "order.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	_, err = db.Exec(`CREATE TABLE rules(id INTEGER PRIMARY KEY,target TEXT);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE sources(id INTEGER PRIMARY KEY,name TEXT,url TEXT,headers TEXT,updated TEXT,error TEXT);CREATE TABLE nodes(id INTEGER PRIMARY KEY,source_id INTEGER,uri TEXT,name TEXT,host TEXT,port TEXT,transport TEXT,security TEXT);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := "vless://id@z.test:443?security=none#Zulu"
+	a := "vless://id@a.test:443?security=none#Alpha"
+	body := z + "\n" + a + "\n" + z
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(base64.StdEncoding.EncodeToString([]byte(body))))
+	}))
+	defer server.Close()
+	db.Exec("INSERT INTO sources VALUES(1,'test',?,'{}','','')", server.URL)
+	for pass := 0; pass < 2; pass++ {
+		if err = refresh("1"); err != nil {
+			t.Fatal(err)
+		}
+		nodes := allNodes()
+		if len(nodes) != 2 {
+			t.Fatalf("unexpected nodes: %d", len(nodes))
+		}
+		want := []string{"Zulu", "Alpha"}
+		if pass == 1 {
+			want = []string{"Alpha", "Zulu"}
+		}
+		for i, n := range nodes {
+			if n.Name != want[i] {
+				t.Fatalf("pass %d: got %s at %d, want %s", pass, n.Name, i, want[i])
+			}
+		}
+		if pass == 0 {
+			saveSetting("selected_node", strconv.Itoa(nodes[0].ID))
+			body = a + "\n" + z
+		}
+		if pass == 1 && setting("selected_node") != strconv.Itoa(nodes[1].ID) {
+			t.Fatal("reorder lost selected node identity")
+		}
+	}
+}
