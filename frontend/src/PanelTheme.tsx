@@ -35,7 +35,7 @@ export default function PanelTheme({ children }: { children: ReactNode }) {
   return <ThemeContext.Provider value={{ accent, setAccent }}>
     <ConfigProvider locale={ruRU} theme={{
       algorithm: theme.darkAlgorithm,
-      token: { colorPrimary: accent, colorInfo: accent, colorLink: accent,
+      token: { fontFamily: '"NGFlagEmoji", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', colorPrimary: accent, colorInfo: accent, colorLink: accent,
         colorBgBase: "#1a1b1f", colorBgLayout: "#1a1b1f", colorBgContainer: "#23252b", colorBgElevated: "#2d2f37" },
       components: {
         Layout: { bodyBg: "#1a1b1f", siderBg: "#15161a", headerBg: "#15161a" },

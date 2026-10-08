@@ -1,7 +1,7 @@
 {
   "name": "ngpanel-frontend",
   "private": true,
-  "version": "0.3.10",
+  "version": "0.3.11",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build",
@@ -13,7 +13,6 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "antd": "6.6.5",
-    "flag-icons": "^7.5.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "uplot": "1.6.32"

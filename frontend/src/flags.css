@@ -1,1 +1,8 @@
-.country-flag { display: inline-block; width: 1.25em; height: .9375em; object-fit: contain; vertical-align: -.08em; }
+/* Flags-only color emoji font used by zashboard, served locally. */
+@font-face {
+  font-family: "NGFlagEmoji";
+  src: url("./assets/fonts/NotoColorEmoji-flagsonly.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 100 900;
+  unicode-range: U+1F1E6-1F1FF;
+}
