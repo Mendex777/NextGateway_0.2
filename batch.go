@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -60,33 +61,45 @@ func startBatch(id string, modes ...string) error {
 			batchCancel = nil
 			batchMu.Unlock()
 		}()
+		jobs := make([]probeJob, 0, len(group))
+		previous := map[string]ProbeResult{}
 		for _, n := range group {
 			if ctx.Err() != nil {
 				return
 			}
-			nodeID := strconv.Itoa(n.ID)
+			id := strconv.Itoa(n.ID)
 			var raw string
-			if db.QueryRow("SELECT uri FROM nodes WHERE id=?", nodeID).Scan(&raw) != nil {
+			if db.QueryRow("SELECT uri FROM nodes WHERE id=?", id).Scan(&raw) != nil {
 				batchMu.Lock()
 				batchStatus.Done++
 				batchMu.Unlock()
 				continue
 			}
-			previous := n.Probe
-			saveProbe(nodeID, ProbeResult{State: "running", Mode: mode, RunID: runID, Message: "Проверяется…"})
-			result := probeNodeMode(ctx, raw, mode)
-			result.RunID = runID
+			previous[id] = n.Probe
+			jobs = append(jobs, probeJob{ID: id, Raw: raw})
+		}
+		runProbeJobs(ctx, jobs, mode, func(job probeJob, result ProbeResult) {
 			if ctx.Err() != nil {
-				saveProbe(nodeID, previous)
 				return
 			}
-			saveProbe(nodeID, result)
+			result.RunID = runID
+			saveProbe(job.ID, result)
 			batchMu.Lock()
 			batchStatus.Done++
 			if result.State == "ok" {
 				batchStatus.OK++
 			}
 			batchMu.Unlock()
+		})
+		if ctx.Err() != nil {
+			// Restore only uncompleted jobs; never leave a cancelled spinner in storage.
+			for _, job := range jobs {
+				var current ProbeResult
+				json.Unmarshal([]byte(setting("node_probe:"+job.ID)), &current)
+				if current.RunID != runID || current.State == "running" {
+					saveProbe(job.ID, previous[job.ID])
+				}
+			}
 		}
 	}()
 	return nil

@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,135 +86,10 @@ func probeMode(modes []string) (string, error) {
 	return "", fmt.Errorf("Неизвестный режим проверки")
 }
 func probeNodeMode(parent context.Context, raw, mode string) ProbeResult {
-	result := ProbeResult{State: "error", Mode: mode, Checked: time.Now().UTC().Format(time.RFC3339)}
-	outbound, e := nodeOutbound(raw)
-	if e != nil {
-		result.Message = e.Error()
-		return result
-	}
-	result.UDP = outbound["protocol"] == "hysteria"
-	// UDP-only proxies use an HTTP probe, matching the outbound table's TCP mode.
-	if result.UDP && mode == "tcp" {
-		mode = "http"
-		result.Mode = mode
-	}
-	prefix := ""
-	start := time.Now()
-	if !result.UDP {
-		host := outbound["settings"].(map[string]any)["vnext"].([]any)[0].(map[string]any)
-		connection, err := (&net.Dialer{Timeout: 4 * time.Second}).DialContext(parent, "tcp4", net.JoinHostPort(host["address"].(string), fmt.Sprint(host["port"])))
-		if err != nil {
-			result.Message = "Сервер недоступен по TCP"
-			return result
-		}
-		connection.Close()
-		result.TCPMS = time.Since(start).Milliseconds()
-		prefix = "TCP доступен; "
-		if mode == "tcp" {
-			result.State = "ok"
-			result.HTTPSMS = result.TCPMS
-			result.Message = "TCP-соединение с сервером установлено"
-			return result
-		}
-	}
-	if result.UDP && mode == "tcp" {
-		result.State = "unsupported"
-		result.Message = "Hysteria использует UDP/QUIC: выберите HTTP или реальную задержку"
-		return result
-	}
-	outbound["streamSettings"].(map[string]any)["sockopt"] = map[string]any{"domainStrategy": "UseIPv4"}
-	listener, e := net.Listen("tcp4", "127.0.0.1:0")
-	if e != nil {
-		result.Message = "Не удалось выделить порт проверки"
-		return result
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-	dir, e := os.MkdirTemp(filepath.Join(stateDir(), "db"), ".probe-")
-	if e != nil {
-		result.Message = "Не удалось подготовить проверку"
-		return result
-	}
-	defer os.RemoveAll(dir)
-	config := map[string]any{"log": map[string]any{"loglevel": "none"}, "inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth"}}}, "outbounds": []any{outbound}}
-	b, _ := json.Marshal(config)
-	path := filepath.Join(dir, "config.json")
-	if e = os.WriteFile(path, b, 0o600); e != nil {
-		result.Message = "Ошибка подготовки проверки"
-		return result
-	}
-	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
-	defer cancel()
-	test := exec.CommandContext(ctx, "/usr/local/bin/xray", "run", "-test", "-c", path)
-	if test.Run() != nil {
-		result.Message = prefix + "конфигурация отклонена Xray"
-		return result
-	}
-	process := exec.CommandContext(ctx, "/usr/local/bin/xray", "run", "-c", path)
-	if process.Start() != nil {
-		result.Message = prefix + "не удалось запустить тестовый Xray"
-		return result
-	}
-	defer func() { process.Process.Kill(); process.Wait() }()
-	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	ready := false
-	for i := 0; i < 30; i++ {
-		c, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
-		if err == nil {
-			c.Close()
-			ready = true
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !ready {
-		result.Message = prefix + "тестовый Xray не запустился"
-		return result
-	}
-	transport := &http.Transport{DialContext: func(ctx context.Context, network, target string) (net.Conn, error) {
-		return socksConnect(ctx, address, target)
-	}}
-	defer transport.CloseIdleConnections()
-	client := http.Client{Transport: transport, Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	start = time.Now()
-	request, _ := http.NewRequestWithContext(ctx, "GET", "https://www.cloudflare.com/cdn-cgi/trace", nil)
-	response, e := client.Do(request)
-	if e != nil {
-		result.Message = prefix + "HTTPS через VPN не прошёл"
-		return result
-	}
-	defer response.Body.Close()
-	body, e := io.ReadAll(io.LimitReader(response.Body, 65537))
-	if e != nil || response.StatusCode != 200 || len(body) == 0 || len(body) > 65536 {
-		result.Message = prefix + "тестовый HTTPS-сервер не вернул корректный ответ"
-		return result
-	}
-	result.HTTPSMS = time.Since(start).Milliseconds()
-	if mode == "http" {
-		result.ExitIP, result.Country = traceEgress(body)
-		response.Body.Close()
-		start = time.Now()
-		warmRequest, _ := http.NewRequestWithContext(ctx, "GET", "https://www.cloudflare.com/cdn-cgi/trace", nil)
-		warmResponse, err := client.Do(warmRequest)
-		if err != nil {
-			result.Message = "Повторный HTTP-запрос через VPN не прошёл"
-			return result
-		}
-		_, err = io.Copy(io.Discard, io.LimitReader(warmResponse.Body, 65537))
-		warmResponse.Body.Close()
-		if err != nil || warmResponse.StatusCode != 200 {
-			result.Message = "HTTP-сервер не вернул корректный ответ"
-			return result
-		}
-		result.HTTPSMS = time.Since(start).Milliseconds()
-	}
-	result.State = "ok"
-	result.Message = "TCP и HTTPS через VPN работают"
-	if result.UDP {
-		result.Message = "HTTPS через Hysteria 2 (UDP/QUIC) работает"
-	}
-	if mode == "http" {
-		result.Message += "; задержка повторного запроса по готовому соединению"
+	var result ProbeResult
+	runProbeJobs(parent, []probeJob{{ID: "single", Raw: raw}}, mode, func(_ probeJob, r ProbeResult) { result = r })
+	if result.State == "" {
+		result = ProbeResult{State: "error", Mode: mode, Message: "Проверка отменена"}
 	}
 	return result
 }
