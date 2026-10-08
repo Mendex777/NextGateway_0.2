@@ -333,3 +333,10 @@ body {
 .group-picker.ant-transfer {
   max-width: 100%;
 }
+
+.panel-settings { max-width: 900px; }
+.accent-choice { height: 40px; }
+.accent-choice[aria-pressed="true"] { border-color: var(--ng-accent); }
+.accent-swatch { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; color: white; }
+.accent-custom { margin-top: 24px; }
+.log-container { --log-stamp: var(--ng-accent-text); --log-debug: var(--ng-accent-text); }

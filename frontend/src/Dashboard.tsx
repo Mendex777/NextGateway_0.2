@@ -284,7 +284,7 @@ export default function Dashboard({
           >
             {p.PanelVersion}
           </button>
-          {p.PanelUpdate.Available && <Tag color="blue">Обновление</Tag>}
+          {p.PanelUpdate.Available && <Tag color="var(--ng-accent)">Обновление</Tag>}
           <div className="ov-bar-actions">
             <Button
               size={isMobile ? "small" : "middle"}

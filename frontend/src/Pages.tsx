@@ -234,7 +234,7 @@ export function Overview({
                     </Button>
                   )}
                   {c.Name === "Панель" && p.PanelUpdate.Available && (
-                    <Tag color="blue">Доступно обновление</Tag>
+                    <Tag color="var(--ng-accent)">Доступно обновление</Tag>
                   )}
                 </Space>
               ),

@@ -184,7 +184,7 @@ export default function Subscriptions({
                 status[g.id]?.Tag?.startsWith(
                   "auto-vpn-" + g.id + "-" + n.ID + "-",
                 )) ? (
-                <Tag color="blue" style={{ marginLeft: 8 }}>
+                <Tag color="var(--ng-accent)" style={{ marginLeft: 8 }}>
                   Выбран
                 </Tag>
               ) : null}

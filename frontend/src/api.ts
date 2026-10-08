@@ -15,7 +15,7 @@ export const getPage = (
   getJSON<Page>(
     "/api/page?" +
       new URLSearchParams({
-        tab,
+        tab: tab === "settings" ? "status" : tab,
         ...Object.fromEntries(
           Object.entries(query).map(([k, v]) => [k, String(v ?? "")]),
         ),

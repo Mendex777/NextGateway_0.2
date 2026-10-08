@@ -20,6 +20,7 @@ import {
   SwapOutlined,
   ApartmentOutlined,
   ToolOutlined,
+  SettingOutlined,
   PushpinFilled,
   PushpinOutlined,
   SearchOutlined,
@@ -27,6 +28,7 @@ import {
 } from "@ant-design/icons";
 import { action, getJSON, getPage } from "./api";
 import type { Page, Values } from "./types";
+import PanelSettings from "./PanelSettings";
 import Routing from "./Routing";
 import Subscriptions from "./Subscriptions";
 import Dashboard from "./Dashboard";
@@ -42,6 +44,7 @@ const navigation = [
   { key: "routing", label: "Маршрутизация", icon: <SwapOutlined /> },
   { key: "gateway", label: "DNS и шлюз", icon: <ApartmentOutlined /> },
   { key: "diagnostics", label: "Диагностика", icon: <ToolOutlined /> },
+  { key: "settings", label: "Настройки панели", icon: <SettingOutlined /> },
 ];
 function stored(key: string, fallback: boolean) {
   try {
@@ -279,7 +282,7 @@ export default function App() {
           {sidebar(false)}
         </Drawer>
         <Layout.Content id="main-content">
-          {page && (tab !== "status" || page.Pending || page.ConfigError) && (
+          {page && tab !== "settings" && (tab !== "status" || page.Pending || page.ConfigError) && (
             <Card className="config-card">
               <div className="config-row">
                 <Button
@@ -338,6 +341,8 @@ export default function App() {
               <div className="loading">
                 <Spin />
               </div>
+            ) : tab === "settings" ? (
+              <PanelSettings />
             ) : tab === "routing" ? (
               <Routing p={page} run={run} reload={reload} />
             ) : tab === "subscriptions" ? (
