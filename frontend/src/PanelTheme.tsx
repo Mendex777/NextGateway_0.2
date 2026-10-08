@@ -2,9 +2,9 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { App as AntApp, ConfigProvider, theme } from "antd";
 import ruRU from "antd/locale/ru_RU";
 
-export const defaultAccent = "#c65bd6";
+export const defaultAccent = "#8b5cf6";
 export const palettes = [
-  { color: defaultAccent, label: "Фиолетово-розовый" },
+  { color: "#c65bd6", label: "Фиолетово-розовый" },
   { color: "#8b5cf6", label: "Фиолетовый" },
   { color: "#1677ff", label: "Синий" },
   { color: "#22b89a", label: "Бирюзовый" },
