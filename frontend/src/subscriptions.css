@@ -23,3 +23,11 @@
   .subscriptions-card .source-toolbar > .ant-input-search { width: 100%; }
   .subscription-expanded { padding: 4px; }
 }
+
+.connection-test-toolbar { display:flex; justify-content:flex-end; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+@media(max-width:600px) { .connection-test-toolbar { justify-content:flex-start; } }
+
+.subscriptions-card .source-toolbar { flex-wrap:wrap; }
+.connection-test-toolbar { margin-bottom:0; margin-left:auto; }
+.source-search { max-width:420px; margin-bottom:16px; }
+@media(max-width:600px) { .connection-test-toolbar { margin-left:0; } }

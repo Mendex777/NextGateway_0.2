@@ -51,7 +51,7 @@ export function Target({
 }
 export function NodeLatency({ node }: { node: Node }) {
   return (
-    <Tooltip title={node.Probe?.Message}>
+    <Tooltip title={(node.Probe?.Mode ? ({ tcp: "TCP", http: "HTTP", real: "Реальная задержка" }[node.Probe.Mode] || node.Probe.Mode) + ": " : "") + (node.Probe?.Message || "")}>
       <Tag
         color={
           node.Probe?.State === "ok"
@@ -67,7 +67,7 @@ export function NodeLatency({ node }: { node: Node }) {
             ? "Проверка…"
             : node.Probe?.State === "error"
               ? "Ошибка"
-              : "—"}
+              : node.Probe?.State === "unsupported" ? "Неприменимо" : "—"}
       </Tag>
     </Tooltip>
   );

@@ -3,6 +3,7 @@ export interface Probe {
   Message: string;
   Checked: string;
   HTTPSMS: number;
+  Mode?: string;
 }
 export interface Node {
   ID: number;

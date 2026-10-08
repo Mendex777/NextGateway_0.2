@@ -17,13 +17,18 @@ import (
 
 type ProbeResult struct {
 	State, Message, Checked string
+	Mode                    string
 	TCPMS, HTTPSMS          int64
 	UDP                     bool
 }
 
 var probeLock sync.Mutex
 
-func startProbe(id string) error {
+func startProbe(id string, modes ...string) error {
+	mode, err := probeMode(modes)
+	if err != nil {
+		return err
+	}
 	var raw string
 	if e := db.QueryRow("SELECT uri FROM nodes WHERE id=?", id).Scan(&raw); e != nil {
 		return fmt.Errorf("Подключение не найдено")
@@ -32,7 +37,11 @@ func startProbe(id string) error {
 		return fmt.Errorf("Проверка подключения уже выполняется")
 	}
 	saveProbe(id, ProbeResult{State: "running", Message: "Проверяется…"})
-	go func() { defer probeLock.Unlock(); result := probeNode(raw); saveProbe(id, result) }()
+	go func() {
+		defer probeLock.Unlock()
+		result := probeNodeMode(context.Background(), raw, mode)
+		saveProbe(id, result)
+	}()
 	return nil
 }
 func saveProbe(id string, result ProbeResult) {
@@ -41,7 +50,21 @@ func saveProbe(id string, result ProbeResult) {
 }
 func probeNode(raw string) ProbeResult { return probeNodeContext(context.Background(), raw) }
 func probeNodeContext(parent context.Context, raw string) ProbeResult {
-	result := ProbeResult{State: "error", Checked: time.Now().UTC().Format(time.RFC3339)}
+	return probeNodeMode(parent, raw, "real")
+}
+func probeMode(modes []string) (string, error) {
+	mode := "real"
+	if len(modes) > 0 && modes[0] != "" {
+		mode = modes[0]
+	}
+	switch mode {
+	case "tcp", "http", "real":
+		return mode, nil
+	}
+	return "", fmt.Errorf("Неизвестный режим проверки")
+}
+func probeNodeMode(parent context.Context, raw, mode string) ProbeResult {
+	result := ProbeResult{State: "error", Mode: mode, Checked: time.Now().UTC().Format(time.RFC3339)}
 	outbound, e := nodeOutbound(raw)
 	if e != nil {
 		result.Message = e.Error()
@@ -60,6 +83,17 @@ func probeNodeContext(parent context.Context, raw string) ProbeResult {
 		connection.Close()
 		result.TCPMS = time.Since(start).Milliseconds()
 		prefix = "TCP доступен; "
+		if mode == "tcp" {
+			result.State = "ok"
+			result.HTTPSMS = result.TCPMS
+			result.Message = "TCP-соединение с сервером установлено"
+			return result
+		}
+	}
+	if result.UDP && mode == "tcp" {
+		result.State = "unsupported"
+		result.Message = "Hysteria использует UDP/QUIC: выберите HTTP или реальную задержку"
+		return result
 	}
 	outbound["streamSettings"].(map[string]any)["sockopt"] = map[string]any{"domainStrategy": "UseIPv4"}
 	listener, e := net.Listen("tcp4", "127.0.0.1:0")
@@ -129,10 +163,30 @@ func probeNodeContext(parent context.Context, raw string) ProbeResult {
 		return result
 	}
 	result.HTTPSMS = time.Since(start).Milliseconds()
+	if mode == "http" {
+		response.Body.Close()
+		start = time.Now()
+		warmRequest, _ := http.NewRequestWithContext(ctx, "GET", "https://www.cloudflare.com/cdn-cgi/trace", nil)
+		warmResponse, err := client.Do(warmRequest)
+		if err != nil {
+			result.Message = "Повторный HTTP-запрос через VPN не прошёл"
+			return result
+		}
+		_, err = io.Copy(io.Discard, io.LimitReader(warmResponse.Body, 65537))
+		warmResponse.Body.Close()
+		if err != nil || warmResponse.StatusCode != 200 {
+			result.Message = "HTTP-сервер не вернул корректный ответ"
+			return result
+		}
+		result.HTTPSMS = time.Since(start).Milliseconds()
+	}
 	result.State = "ok"
 	result.Message = "TCP и HTTPS через VPN работают"
 	if result.UDP {
 		result.Message = "HTTPS через Hysteria 2 (UDP/QUIC) работает"
+	}
+	if mode == "http" {
+		result.Message += "; задержка повторного запроса по готовому соединению"
 	}
 	return result
 }

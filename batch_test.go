@@ -68,4 +68,14 @@ func TestBatchScopeAndCancellation(t *testing.T) {
 	if err = startBatch("missing"); err == nil {
 		t.Fatal("unknown source accepted")
 	}
+	if err = startBatch("", "tcp"); err != nil {
+		t.Fatal(err)
+	}
+	wait()
+	batchMu.Lock()
+	status = batchStatus
+	batchMu.Unlock()
+	if status.Total != 2 || status.Done != 2 || status.Mode != "tcp" || setting("node_probe:2") == "" || setting("selected_node") != "2" {
+		t.Fatalf("global batch omitted nodes or changed selection: %+v", status)
+	}
 }

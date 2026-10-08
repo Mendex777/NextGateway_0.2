@@ -73,7 +73,7 @@ func newRouter() http.Handler {
 	router.POST("/api/action", func(c *gin.Context) {
 		if os.Getenv("NG_REVIEW") == "1" {
 			action := c.PostForm("action")
-			if operationKind(action) != "" || strings.Contains("|group-select|node-probe|source-probe|group-check|device-discover|dns-diagnose|xray-update-check|", "|"+action+"|") {
+			if operationKind(action) != "" || strings.Contains("|group-select|node-probe|source-probe|probe-all|group-check|device-discover|dns-diagnose|xray-update-check|", "|"+action+"|") {
 				c.JSON(403, gin.H{"ok": false, "message": "РџСЂРѕРІРµСЂРєР° РёРЅС‚РµСЂС„РµР№СЃР°: РґРµР№СЃС‚РІРёСЏ СЃ СЂР°Р±РѕС‡РёРјРё СЃР»СѓР¶Р±Р°РјРё РѕС‚РєР»СЋС‡РµРЅС‹"})
 				return
 			}

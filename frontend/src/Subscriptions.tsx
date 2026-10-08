@@ -9,6 +9,8 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
+  Tooltip,
   Select,
   Space,
   Table,
@@ -22,6 +24,7 @@ import {
   EditOutlined,
   MoreOutlined,
   PlusOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -57,6 +60,7 @@ export default function Subscriptions({
     [group, setGroup] = useState<Group | null | undefined>(),
     [manual, setManual] = useState(false),
     [detail, setDetail] = useState<Node | null>(null),
+    [testMode, setTestMode] = useState("real"),
     [search, setSearch] = useState(""),
     [status, setStatus] = useState<Record<string, GroupStatus>>({}),
     [checks, setChecks] = useState<
@@ -162,11 +166,12 @@ export default function Subscriptions({
               : status[g.id]?.Samples
             )?.find((v) => v.NodeID === String(n.ID))
           : undefined;
-        return sample
+        return sample && (!n.Probe?.Checked || Number(sample.Checked) * 1000 > Date.parse(n.Probe.Checked))
           ? {
               ...n,
               Probe: {
                 State: sample.Alive ? "ok" : "error",
+                Mode: "real",
                 HTTPSMS: sample.DelayMS,
                 Message: "Проверка группы Xray",
                 Checked: String(sample.Checked),
@@ -240,7 +245,7 @@ export default function Subscriptions({
               <TooltipButton
                 title="Проверить"
                 icon={<ThunderboltOutlined />}
-                onClick={() => doRun("node-probe", { id: n.ID })}
+                onClick={() => doRun("node-probe", { id: n.ID, mode: testMode })}
               />
 
             </Space>
@@ -365,7 +370,7 @@ export default function Subscriptions({
             onClick: ({ key, domEvent }) => {
               domEvent.stopPropagation();
               if (key === "edit") setSource(s);
-              else if (key === "probe") doRun("source-probe", { id: s.ID });
+              else if (key === "probe") doRun("source-probe", { id: s.ID, mode: testMode });
               else
                 confirm("Удалить подписку «" + s.Name + "»?", "delete", {
                   id: s.ID,
@@ -423,13 +428,24 @@ export default function Subscriptions({
             </Button>
             <Button onClick={() => setManual(true)}>Добавить ссылку</Button>
           </Space>
+
+
+        <div className="connection-test-toolbar">
+          <Radio.Group size="small" optionType="button" buttonStyle="solid" value={testMode} onChange={(e) => setTestMode(e.target.value)}>
+            <Tooltip title="TCP-соединение с сервером; доступность VPN не проверяется"><Radio.Button value="tcp">TCP</Radio.Button></Tooltip>
+            <Tooltip title="HTTP-запрос через VPN по уже установленному соединению"><Radio.Button value="http">HTTP</Radio.Button></Tooltip>
+            <Tooltip title="HTTPS через VPN, включая установление соединения и TLS"><Radio.Button value="real">Реальная задержка</Radio.Button></Tooltip>
+          </Radio.Group>
+          <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={batch?.State === "running" || !(p.Nodes || []).length} onClick={() => doRun("probe-all", { mode: testMode })}>Тестировать все</Button>
+        </div>
+        </div>
+        <div className="source-search">
           <Input.Search
             allowClear
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск подключений"
           />
-
         </div>
         {p.SelectedNode && (
           <Alert
@@ -441,9 +457,9 @@ export default function Subscriptions({
         {batch?.State && (
           <Alert
             className="section-gap"
-            type={batch.State === "running" ? "info" : "success"}
+            type={batch.State === "running" ? "info" : batch.State === "cancelled" ? "warning" : "success"}
             title={
-              (batch.State === "running" ? "Проверка" : "Проверка завершена") +
+              (batch.State === "running" ? "Проверка" : batch.State === "cancelled" ? "Проверка отменена" : "Проверка завершена") +
               ": " +
               batch.Done +
               " / " +
@@ -637,7 +653,7 @@ export default function Subscriptions({
     </>
   );
 }
-import { Modal, Tooltip } from "antd";
+import { Modal } from "antd";
 function TooltipButton(props: {
   title: string;
   icon: React.ReactNode;

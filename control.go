@@ -416,14 +416,14 @@ func controlAction(r *http.Request) (bool, string, error) {
 		msg = "Обнаружение запущено; обновите страницу через несколько секунд"
 	case "device-save":
 		e = saveDevice(r)
-	case "source-probe":
-		e = startBatch(r.FormValue("id"))
+	case "source-probe", "probe-all":
+		e = startBatch(r.FormValue("id"), r.FormValue("mode"))
 		msg = "Проверка подписки запущена"
 	case "probe-cancel":
 		cancelBatch()
 		msg = "Отмена проверки запрошена"
 	case "node-probe":
-		e = startProbe(r.FormValue("id"))
+		e = startProbe(r.FormValue("id"), r.FormValue("mode"))
 		msg = "Проверка запущена; обновите страницу подключений через несколько секунд"
 	case "apply", "check":
 		var c map[string]any

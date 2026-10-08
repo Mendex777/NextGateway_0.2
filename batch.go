@@ -9,6 +9,7 @@ import (
 
 type BatchStatus struct {
 	SourceID        string
+	Mode            string
 	State           string
 	Done, Total, OK int
 }
@@ -17,15 +18,19 @@ var batchMu sync.Mutex
 var batchStatus BatchStatus
 var batchCancel context.CancelFunc
 
-func startBatch(id string) error {
+func startBatch(id string, modes ...string) error {
+	mode, err := probeMode(modes)
+	if err != nil {
+		return err
+	}
 	var exists int
-	if db.QueryRow("SELECT id FROM sources WHERE id=?", id).Scan(&exists) != nil {
+	if id != "" && db.QueryRow("SELECT id FROM sources WHERE id=?", id).Scan(&exists) != nil {
 		return fmt.Errorf("Подписка не найдена")
 	}
 	nodes := allNodes()
 	var group []Node
 	for _, n := range nodes {
-		if strconv.Itoa(n.SourceID) == id {
+		if id == "" || strconv.Itoa(n.SourceID) == id {
 			group = append(group, n)
 		}
 	}
@@ -37,7 +42,7 @@ func startBatch(id string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	batchMu.Lock()
-	batchStatus = BatchStatus{SourceID: id, State: "running", Total: len(group)}
+	batchStatus = BatchStatus{SourceID: id, Mode: mode, State: "running", Total: len(group)}
 	batchCancel = cancel
 	batchMu.Unlock()
 	go func() {
@@ -59,7 +64,7 @@ func startBatch(id string) error {
 			}
 			nodeID := strconv.Itoa(n.ID)
 			var raw string
-			if db.QueryRow("SELECT uri FROM nodes WHERE id=? AND source_id=?", nodeID, id).Scan(&raw) != nil {
+			if db.QueryRow("SELECT uri FROM nodes WHERE id=?", nodeID).Scan(&raw) != nil {
 				batchMu.Lock()
 				batchStatus.Done++
 				batchMu.Unlock()
@@ -67,7 +72,7 @@ func startBatch(id string) error {
 			}
 			previous := n.Probe
 			saveProbe(nodeID, ProbeResult{State: "running", Message: "Проверяется…"})
-			result := probeNodeContext(ctx, raw)
+			result := probeNodeMode(ctx, raw, mode)
 			if ctx.Err() != nil {
 				saveProbe(nodeID, previous)
 				return

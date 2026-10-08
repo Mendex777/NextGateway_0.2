@@ -1,12 +1,29 @@
 package main
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestTCPProbeStopsBeforeStartingXray(t *testing.T) {
+	server, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	raw := "vless://11111111-1111-4111-8111-111111111111@" + server.Addr().String() + "?security=none"
+	result := probeNodeMode(context.Background(), raw, "tcp")
+	if result.State != "ok" || result.Mode != "tcp" || result.HTTPSMS != result.TCPMS {
+		t.Fatalf("unexpected TCP result: %+v", result)
+	}
+	if _, err = probeMode([]string{"invalid"}); err == nil {
+		t.Fatal("invalid mode accepted")
+	}
+}
 
 func TestProbeDoesNotTreatTCPAsWorkingVPN(t *testing.T) {
 	if _, e := os.Stat("/usr/local/bin/xray"); e != nil {
