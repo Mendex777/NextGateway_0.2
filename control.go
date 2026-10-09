@@ -460,9 +460,13 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "balance-settings":
 		e = saveBalance(r)
 		msg = "Группа сохранена. Выберите её выходом нужных маршрутов и примените конфигурацию"
-	case "network-save":
+	case "network-save", "network-save-apply":
 		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router"), Mode: r.FormValue("mode"), SystemDNS: r.FormValue("system_dns")})
 		msg = "Параметры сети сохранены; примените сеть ВМ и конфигурацию шлюза"
+		if e == nil && r.FormValue("action") == "network-save-apply" {
+			e = enqueue("network", nil)
+			msg = "Сеть ВМ сохранена и отправлена на применение; затем подтвердите доступность панели"
+		}
 	case "network-detect":
 		var n GatewayNetwork
 		n, e = detectNetwork()

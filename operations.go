@@ -21,7 +21,7 @@ func operationKind(action string) string {
 		return "panel"
 	case "install":
 		return "install"
-	case "check", "apply", "start", "restart", "stop", "rollback", "network", "network-confirm", "logs", "geodata", "dependencies":
+	case "check", "apply", "start", "restart", "stop", "rollback", "network", "network-save-apply", "network-confirm", "logs", "geodata", "dependencies":
 		return "control"
 	}
 	return ""
@@ -95,6 +95,9 @@ func operationStatus(kind, action string, since time.Time) OperationStatus {
 		}
 		return OperationStatus{State: state, Message: s, Done: true}
 	case "control":
+		if action == "network-save-apply" {
+			action = "network"
+		}
 		if _, e := os.Stat(filepath.Join(stateDir(), "jobs/control.request")); e == nil {
 			return pending
 		}

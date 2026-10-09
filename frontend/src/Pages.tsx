@@ -463,7 +463,7 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
                   key={JSON.stringify(p.Network)}
                   layout="vertical"
                   initialValues={{ ...p.Network, mode: p.Network.mode || "router" }}
-                  onFinish={(v) => void run("network-save", v).catch(() => {})}
+                  onFinish={(v) => void run("network-save-apply", v).catch(() => {})}
                 >
                   <Form.Item name="mode" label="Получение сетевых настроек"><Select onChange={(mode) => {
                     if (mode === "dhcp") networkForm.setFieldsValue({address:p.DetectedNetwork.address,cidr:p.DetectedNetwork.cidr,router:p.DetectedNetwork.router,system_dns:""});
@@ -487,22 +487,10 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
                       </Form.Item>
                     ))}
                   </div>}</Form.Item>
-                  <Form.Item name="system_dns" label="Системный DNS ВМ" extra="IPv4, каждый с новой строки. В режиме DHCP пустое поле означает DNS от роутера."><Input.TextArea rows={2} disabled={networkMode === "dhcp"} placeholder={networkMode === "dhcp" ? "Автоматически от DHCP" : ""} /></Form.Item>{networkMode === "dhcp" && <Alert type="info" title="IP, шлюз и системный DNS будут получены от DHCP после применения сети ВМ. Выше показаны текущие параметры." className="section-gap" />}<Button htmlType="submit">Сохранить параметры</Button>
+                  <Form.Item name="system_dns" label="Системный DNS ВМ" extra="IPv4, каждый с новой строки. В режиме DHCP пустое поле означает DNS от роутера."><Input.TextArea rows={2} disabled={networkMode === "dhcp"} placeholder={networkMode === "dhcp" ? "Автоматически от DHCP" : ""} /></Form.Item>{networkMode === "dhcp" && <Alert type="info" title="IP, шлюз и системный DNS будут получены от DHCP после применения сети ВМ. Выше показаны текущие параметры." className="section-gap" />}<Button type="primary" htmlType="submit" disabled={p.Runtime.Network === "pending"}>Сохранить и применить сеть</Button>
                 </Form>
-                <Space className="section-gap" wrap>
-                  <Button onClick={() => doRun("network-detect")}>
-                    Определить по текущей сети
-                  </Button>
-                  <Button onClick={() => doRun("network")}>
-                    Применить сеть ВМ
-                  </Button>
-                  <Button
-                    disabled={p.Runtime.Network !== "pending"}
-                    onClick={() => doRun("network-confirm")}
-                  >
-                    Подтвердить доступность
-                  </Button>
-                </Space>
+                {p.Runtime.Network === "pending" && <Button type="primary" className="section-gap" onClick={() => doRun("network-confirm")}>Подтвердить доступность</Button>}
+
     </Card>
     <Card title="DNS Xray" className="section-gap">
       <Typography.Paragraph type="secondary">DNS для трафика через Xray. Эти настройки не меняют системный DNS ВМ.</Typography.Paragraph>

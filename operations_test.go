@@ -33,3 +33,14 @@ func TestOperationRejectsStaleResult(t *testing.T) {
 		t.Fatal("reported completed while job pending")
 	}
 }
+
+func TestCombinedNetworkActionTracksNetworkJob(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NG_STATE", dir)
+	since := time.Now().Add(-time.Second)
+	raw, _ := json.Marshal(Runtime{Action: "network", State: "ok", Updated: time.Now().UTC().Format(time.RFC3339Nano)})
+	os.WriteFile(filepath.Join(dir, "runtime.json"), raw, 0600)
+	if operationKind("network-save-apply") != "control" || !operationStatus("control", "network-save-apply", since).Done {
+		t.Fatal("combined network action did not track job completion")
+	}
+}
