@@ -353,12 +353,10 @@ def network(n):
       link-local: []
       dhcp4-overrides:
         use-routes: false
-        use-dns: false
+        use-dns: true
       routes:
         - to: default
           via: __ROUTER__
-      nameservers:
-        addresses: [1.1.1.1, 8.8.8.8]
 '''
     config=config.replace("__INTERFACE__",json.dumps(n["interface"])).replace("__ROUTER__",n["router"])
     atomic(target,config,0o600)

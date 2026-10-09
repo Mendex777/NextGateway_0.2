@@ -19,6 +19,15 @@ class NetworkTests(unittest.TestCase):
         for value in ('ens18','192.168.1.84','192.168.1.0/24','__INTERFACE__'):
             self.assertNotIn(value,text)
 
+    def test_network_change_keeps_dhcp_dns(self):
+        writes=[]
+        with patch.object(control,'validate_network',return_value=self.network), patch.object(control,'migrate_network'), patch.object(control,'install_network_recovery'), patch.object(control.pathlib.Path,'exists',return_value=False), patch.object(control,'atomic',side_effect=lambda path,data,*args:writes.append((str(path),data))), patch.object(control,'run'):
+            control.network(self.network)
+        config=next(data for path,data in writes if path.endswith('90-ngpanel.yaml'))
+        self.assertIn('use-dns: true',config)
+        self.assertNotIn('1.1.1.1',config)
+        self.assertNotIn('8.8.8.8',config)
+
     def test_reject_injection_and_invalid_addresses(self):
         for field,value in [('interface','enp2s0";bad'),('router','10.20.31.1'),('address','10.20.30.255'),('cidr','10.20.30.10/24')]:
             with self.subTest(field=field):
