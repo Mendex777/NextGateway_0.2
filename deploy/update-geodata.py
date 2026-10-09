@@ -15,6 +15,8 @@ def activate(path):
     link.unlink(missing_ok=True);link.symlink_to(path,target_is_directory=True);os.replace(link,CURRENT)
 def update():
     VERSIONS.mkdir(exist_ok=True)
+    # The installer uses umask 077; both ngpanel and ngxray need traversal.
+    VERSIONS.chmod(0o755)
     stage=pathlib.Path(tempfile.mkdtemp(prefix='release-',dir=VERSIONS));stage.chmod(0o755)
     installed=False
     try:

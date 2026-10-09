@@ -28,7 +28,7 @@ func loadGeo() {
 			e = json.Unmarshal(b, &geoCategories)
 		}
 		if e != nil {
-			geoError = "Базы категорий ещё не установлены"
+			geoError = fmt.Sprintf("Не удалось прочитать индекс geo-баз: %v", e)
 		}
 	})
 }
@@ -85,6 +85,9 @@ func findGeo(query string) []GeoCategory {
 }
 func validGeo(value, kind string) error {
 	loadGeo()
+	if geoError != "" {
+		return fmt.Errorf("%s", geoError)
+	}
 	for _, c := range geoCategories {
 		if c.Kind == kind && value == kind+":"+c.Code && c.Count > 0 {
 			return nil
