@@ -17,11 +17,12 @@ type backupTable struct {
 	Rows [][]any `json:"rows"`
 }
 type panelBackup struct {
-	Format  string          `json:"format"`
-	Version int             `json:"version"`
-	Created string          `json:"created"`
-	SHA256  string          `json:"sha256"`
-	Data    json.RawMessage `json:"data"`
+	Format        string          `json:"format"`
+	Version       int             `json:"version"`
+	Created       string          `json:"created"`
+	SHA256        string          `json:"sha256"`
+	Data          json.RawMessage `json:"data"`
+	AppliedConfig json.RawMessage `json:"applied_xray_config,omitempty"`
 }
 
 var backupColumns = map[string][]string{
@@ -68,7 +69,11 @@ func exportBackup() ([]byte, error) {
 		return nil, e
 	}
 	sum := sha256.Sum256(data)
-	return json.Marshal(panelBackup{Format: "ngpanel-backup", Version: 1, Created: time.Now().UTC().Format(time.RFC3339), SHA256: hex.EncodeToString(sum[:]), Data: data})
+	snapshot, _ := dashboardConfig()
+	if !json.Valid(snapshot) {
+		snapshot = nil
+	}
+	return json.Marshal(panelBackup{Format: "ngpanel-backup", Version: 1, Created: time.Now().UTC().Format(time.RFC3339), SHA256: hex.EncodeToString(sum[:]), Data: data, AppliedConfig: snapshot})
 }
 func joinColumns(cols []string) string {
 	s := ""

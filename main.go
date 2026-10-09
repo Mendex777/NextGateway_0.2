@@ -359,6 +359,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"version": panelVersion, "commit": panelCommit})
 		return
 	}
+	if r.URL.Path == "/routes-template" {
+		routesTemplateHandler(w, r)
+		return
+	}
 	if r.URL.Path == "/backup" {
 		backupHandler(w, r)
 		return

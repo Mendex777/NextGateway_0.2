@@ -234,7 +234,7 @@ export default function Dashboard({
     modal.confirm({
       title: "Восстановить настройки из бекапа?",
       content:
-        "Подписки, подключения, группы и правила будут заменены. Работающий шлюз изменится после применения конфигурации.",
+        "Сохранённые настройки панели будут заменены: подписки, подключения, группы, правила, устройства и DNS. Параметры шлюза зависят от опции «Сохранить настройки этой машины». Работающий шлюз изменится после применения конфигурации.",
       okText: "Восстановить",
       cancelText: "Отмена",
       onOk: async () => {
@@ -512,9 +512,9 @@ export default function Dashboard({
       >
         <div className="dash-backup-row">
           <div>
-            <Typography.Text strong>Экспорт базы данных</Typography.Text>
+            <Typography.Text strong>Полный бекап настроек</Typography.Text>
             <div className="dash-secondary">
-              Подписки, подключения, группы и правила
+              Все настройки панели, устройства, DNS, шлюз и снимок конфигурации Xray
             </div>
           </div>
           <Tooltip title="Скачать бекап">
@@ -529,7 +529,7 @@ export default function Dashboard({
         </div>
         <div className="dash-backup-row">
           <div>
-            <Typography.Text strong>Импорт базы данных</Typography.Text>
+            <Typography.Text strong>Восстановление настроек</Typography.Text>
             <div className="dash-secondary">
               Восстановление из файла NGPanel (.json)
             </div>
@@ -555,7 +555,7 @@ export default function Dashboard({
           Сохранить настройки этой машины
         </Checkbox>
         <div className="dash-secondary dash-backup-hint">
-          Оставляет адрес ВМ, интерфейс, подсеть и роутер вместо значений из
+          Восстанавливает сохранённые настройки; для запуска нажмите «Применить». Снимок Xray сохранён для справки. Эта опция оставляет адрес ВМ, интерфейс, подсеть и роутер вместо значений из
           бекапа.
         </div>
       </Modal>

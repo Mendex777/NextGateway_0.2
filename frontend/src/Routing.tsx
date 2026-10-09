@@ -1,3 +1,4 @@
+import RoutingTransfer from "./RoutingTransfer";
 import { FlagText } from "./FlagText";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { HTMLAttributes } from "react";
@@ -246,7 +247,8 @@ export default function Routing({
   ];
   const rulesPanel = (
     <>
-      <Space className="routing-toolbar">
+      <Space wrap className="routing-toolbar">
+ <RoutingTransfer p={p} onDone={()=>reload()} />
         <Button
           type="primary"
           icon={<PlusOutlined />}

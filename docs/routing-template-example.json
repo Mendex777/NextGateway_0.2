@@ -1,0 +1,11 @@
+{
+  "format": "ngpanel-routing",
+  "version": 1,
+  "default_route": "direct",
+  "outgoings": [{"key": "video-vpn", "label": "VPN для видео", "kind": "group"}],
+  "rules": [
+    {"name": "Пример: напрямую", "kind": "domain", "value": "domain:example.org", "target": "direct"},
+    {"name": "Пример: выбранный VPN", "kind": "domain", "value": "domain:example.net", "target": "proxy"},
+    {"name": "Пример: VPN для видео", "kind": "domain", "value": "domain:video.example", "target": "video-vpn"}
+  ]
+}
