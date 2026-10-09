@@ -256,18 +256,6 @@ export default function Routing({
         >
           Маршрутизация
         </Button>
-        <Dropdown
-          trigger={["click"]}
-          menu={{
-            items: [
-              { key: "basic", label: "Маршрут по умолчанию" },
-              { key: "geo", label: "Поиск geosite / geoip" },
-            ],
-            onClick: ({ key }) => setTab(key),
-          }}
-        >
-          <Button icon={<MoreOutlined />}>ещё</Button>
-        </Dropdown>
       </Space>
       <DndContext
         sensors={sensors}
@@ -555,15 +543,11 @@ export default function Routing({
               icon: <AimOutlined />,
               children: test,
             },
-            ...(tab === "geo"
-              ? [
-                  {
-                    key: "geo",
-                    label: "Поиск geosite / geoip",
-                    children: geoPanel,
-                  },
-                ]
-              : []),
+            {
+              key: "geo",
+              label: "Поиск geosite / geoip",
+              children: geoPanel,
+            },
           ]}
         />
       </Card>
