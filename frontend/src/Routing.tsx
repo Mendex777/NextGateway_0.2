@@ -131,6 +131,10 @@ export default function Routing({
     [geo, setGeo] = useState<Page | null>(null),
     [query, setQuery] = useState(""),
     [searching, setSearching] = useState(false);
+  const [selectedRules, setSelectedRules] = useState<number[]>([]);
+  const [bulkTarget, setBulkTarget] = useState("proxy");
+  const [bulkSaving, setBulkSaving] = useState(false);
+  useEffect(() => setSelectedRules(ids => ids.filter(id => (p.Rules || []).some(rule => rule.ID === id))), [p.Rules]);
   useEffect(() => setRules(p.Rules || []), [p.Rules]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -257,6 +261,17 @@ export default function Routing({
           Маршрутизация
         </Button>
       </Space>
+      {selectedRules.length > 0 && <Space wrap className="section-gap" style={{marginBottom: 12}}>
+        <span>Выбрано правил: {selectedRules.length}</span>
+        <Target p={p} value={bulkTarget} onChange={setBulkTarget} />
+        <Button type="primary" loading={bulkSaving} onClick={async () => {
+          setBulkSaving(true);
+          try { await run("rule-bulk-target", {ids: selectedRules.join(","), target: bulkTarget}); setSelectedRules([]); }
+          catch {} finally { setBulkSaving(false); }
+        }}>Изменить исходящее</Button>
+        <Button onClick={() => setSelectedRules([])}>Снять выделение</Button>
+        <Tooltip title="Shift + флажок выделяет диапазон; обычный клик добавляет или убирает отдельное правило."><span>Shift: диапазон</span></Tooltip>
+      </Space>}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -286,6 +301,7 @@ export default function Routing({
           <Table
             className="rule-table"
             rowKey="ID"
+            rowSelection={{selectedRowKeys: selectedRules, onChange: keys => setSelectedRules(keys.map(Number))}}
             columns={columns}
             dataSource={rules}
             components={{ body: { row: DragRow } }}

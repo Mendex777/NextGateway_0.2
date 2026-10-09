@@ -595,6 +595,36 @@ func controlAction(r *http.Request) (bool, string, error) {
 		}
 	case "rule-order", "rule-up", "rule-down":
 		e = reorderRules(r.FormValue("action"), r.FormValue("id"), r.FormValue("order"), r.FormValue("before"))
+	case "rule-bulk-target":
+		target := r.FormValue("target")
+		if !validTarget(target) {
+			return true, "", fmt.Errorf("Некорректное исходящее подключение")
+		}
+		ids := strings.Split(r.FormValue("ids"), ",")
+		if len(ids) == 0 || len(ids) > 10000 {
+			return true, "", fmt.Errorf("Выберите правила")
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return true, "", err
+		}
+		defer tx.Rollback()
+		for _, raw := range ids {
+			id, err := strconv.Atoi(raw)
+			if err != nil || id <= 0 {
+				return true, "", fmt.Errorf("Некорректный номер правила")
+			}
+			result, err := tx.Exec("UPDATE rules SET target=? WHERE id=?", target, id)
+			if err != nil {
+				return true, "", err
+			}
+			count, err := result.RowsAffected()
+			if err != nil || count != 1 {
+				return true, "", fmt.Errorf("Правило %d больше не существует", id)
+			}
+		}
+		e = tx.Commit()
+		msg = fmt.Sprintf("Исходящее подключение изменено для %d правил", len(ids))
 	case "rule-toggle":
 		var id int
 		if e = db.QueryRow("SELECT id FROM rules WHERE id=?", r.FormValue("id")).Scan(&id); e == nil {
