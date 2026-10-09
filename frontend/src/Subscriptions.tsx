@@ -67,7 +67,12 @@ export default function Subscriptions({
     [section, setSection] = useState("connections"),
     [pagination, setPagination] = useState<Record<string, { current: number; pageSize: number }>>({}),
     [detail, setDetail] = useState<Node | null>(null),
-    [testMode, setTestMode] = useState("real"),
+    [testMode, setTestMode] = useState(() => {
+      try {
+        const saved = localStorage.getItem("ngpanel-test-mode");
+        return saved && ["tcp", "http", "real"].includes(saved) ? saved : "real";
+      } catch { return "real"; }
+    }),
     [search, setSearch] = useState(""),
     [status, setStatus] = useState<Record<string, GroupStatus>>({}),
     [checks, setChecks] = useState<
@@ -483,7 +488,7 @@ export default function Subscriptions({
 
 
         {section === "connections" && <div className="connection-test-toolbar">
-          <Radio.Group size="small" optionType="button" buttonStyle="solid" value={testMode} onChange={(e) => setTestMode(e.target.value)}>
+          <Radio.Group size="small" optionType="button" buttonStyle="solid" value={testMode} onChange={(e) => { const mode = e.target.value; setTestMode(mode); try { localStorage.setItem("ngpanel-test-mode", mode); } catch { /* unavailable browser storage */ } }}>
             <Tooltip title="TCP-соединение с сервером. Для UDP-подключений используется HTTP-проверка через VPN"><Radio.Button value="tcp">TCP</Radio.Button></Tooltip>
             <Tooltip title="HTTP-запрос через VPN по уже установленному соединению"><Radio.Button value="http">HTTP</Radio.Button></Tooltip>
             <Tooltip title="HTTPS через VPN, включая установление соединения и TLS"><Radio.Button value="real">Реальная задержка</Radio.Button></Tooltip>
