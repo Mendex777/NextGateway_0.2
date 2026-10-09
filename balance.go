@@ -270,7 +270,7 @@ func addGroups(config map[string]any) error {
 	config["api"] = map[string]any{"tag": "balance-api", "listen": "127.0.0.1:10085", "services": []string{"RoutingService", "ObservatoryService"}}
 	dns := config["dns"].(map[string]any)
 	servers := dns["servers"].([]any)
-	dns["servers"] = append([]any{map[string]any{"address": setting("dns_direct"), "domains": hosts, "skipFallback": true, "finalQuery": true, "tag": "dns-bootstrap"}}, servers...)
+	dns["servers"] = append([]any{map[string]any{"address": bootstrapDNS(), "domains": hosts, "skipFallback": true, "finalQuery": true, "tag": "dns-bootstrap"}}, servers...)
 	return nil
 }
 

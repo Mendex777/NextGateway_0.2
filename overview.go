@@ -81,21 +81,6 @@ func componentOverview(p Page) []ComponentStatus {
 		}
 	}
 	add("Перехват LAN", gateway, class, "/?tab=gateway", "", "Настроить", "Состояние применённой конфигурации; подробная проверка — в диагностике")
-	dns := "Не проверен"
-	class = "neutral"
-	if stamp, e := time.Parse(time.RFC3339, setting("dns_last_check_time")); e == nil {
-		dns = "Ошибка проверки · " + stamp.Local().Format("02.01 15:04")
-		if setting("dns_last_check_ok") == "1" {
-			dns = "Отвечает · " + stamp.Local().Format("02.01 15:04")
-		}
-		class = "warn"
-		if setting("dns_last_check_ok") == "1" && time.Since(stamp) < 10*time.Minute && strings.TrimSpace(p.Service) == "active" {
-			class = "good"
-		} else {
-			dns += " · нужна новая проверка"
-		}
-	}
-	add("DNS для устройств", dns, class, "", "dns-diagnose", "Проверить", "Проверяется локальный DNS Xray; это не проверка настроек клиентского устройства")
 	geo := "Не установлены"
 	class = "warn"
 	if a, e := os.Stat("/usr/local/share/ngpanel-geodata/geosite.dat"); e == nil {

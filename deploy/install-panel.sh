@@ -269,7 +269,7 @@ with sqlite3.connect(database) as db:
                     except ValueError:continue
                     if resolver.version==4 and not resolver.is_loopback and not resolver.is_unspecified and str(resolver)!=network['address']:resolvers.append(str(resolver))
                 if resolvers:
-                    db.execute("INSERT OR REPLACE INTO settings VALUES('dns_direct',?)",(resolvers[0],))
+                    db.execute("INSERT OR REPLACE INTO settings VALUES('dns_direct',?)",('',))
                     break
         db.execute("INSERT OR REPLACE INTO settings VALUES('gateway_enabled','1')")
     db.execute("INSERT OR REPLACE INTO settings VALUES('setup_skipped','1')")

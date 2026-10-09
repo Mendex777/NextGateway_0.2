@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDNSPolicyOrderedFallback(t *testing.T) {
 	configDatabase(t)
@@ -25,5 +28,28 @@ func TestDNSRejectsBypassAndIPv6(t *testing.T) {
 		if _, e := normalizeDNSServers(s, ""); e == nil {
 			t.Fatal(s)
 		}
+	}
+}
+
+func TestBootstrapDNSManualAndAutomatic(t *testing.T) {
+	configDatabase(t)
+	saveSetting("dns_direct", "9.9.9.9")
+	if bootstrapDNS() != "9.9.9.9" {
+		t.Fatal("manual override ignored")
+	}
+	saveSetting("dns_direct", "")
+	network, err := detectNetwork()
+	if err != nil {
+		t.Skip("host network unavailable")
+	}
+	expected := ""
+	for _, server := range strings.Fields(network.SystemDNS) {
+		if validIPv4(server) {
+			expected = server
+			break
+		}
+	}
+	if bootstrapDNS() != expected {
+		t.Fatal("automatic DNS differs from VM system DNS")
 	}
 }

@@ -216,7 +216,7 @@ func vlessOutbound(raw string) (map[string]any, error) {
 	return map[string]any{"tag": "proxy", "protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{"address": u.Hostname(), "port": port, "users": []any{user}}}}, "streamSettings": stream}, nil
 }
 func buildConfig() (map[string]any, error) {
-	dns := setting("dns_direct")
+	dns := bootstrapDNS()
 	if !validIPv4(dns) {
 		return nil, fmt.Errorf("DNS должен быть IPv4-адресом")
 	}
@@ -315,7 +315,7 @@ func buildConfig() (map[string]any, error) {
 func enqueue(action string, config map[string]any) error {
 	jobLock.Lock()
 	defer jobLock.Unlock()
-	j := Job{Groups: balanceGroups(), Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: setting("dns_direct")}
+	j := Job{Groups: balanceGroups(), Network: gatewayNetwork(), ID: strconv.FormatInt(time.Now().UnixNano(), 10), Action: action, Config: config, Gateway: setting("gateway_enabled") == "1", DNS: bootstrapDNS()}
 	for i := range j.Groups {
 		active := []string{}
 		for _, id := range j.Groups[i].Nodes {
@@ -417,16 +417,6 @@ func controlAction(r *http.Request) (bool, string, error) {
 		return true, message, err
 	case "setup-skip":
 		return true, "Мастер скрыт. Все настройки доступны на главной странице.", saveSetting("setup_skipped", "1")
-	case "dns-diagnose":
-		message, err := diagnoseDNS()
-		saveSetting("dns_last_check_time", time.Now().UTC().Format(time.RFC3339))
-		saveSetting("dns_last_check", message)
-		ok := "0"
-		if err == nil {
-			ok = "1"
-		}
-		saveSetting("dns_last_check_ok", ok)
-		return true, message, err
 	case "device-discover":
 		e = discoverDevices()
 		msg = "Обнаружение запущено; обновите страницу через несколько секунд"
@@ -478,8 +468,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 		e = enqueue("network", nil)
 		msg = "Изменение сети ВМ запрошено; после применения подтвердите доступность панели"
 	case "gateway-settings":
-		dns := r.FormValue("dns")
-		if !validIPv4(dns) {
+		dns := strings.TrimSpace(r.FormValue("dns"))
+		if dns != "" && !validIPv4(dns) {
 			return true, "", fmt.Errorf("Нужен IPv4 DNS")
 		}
 		dm := r.FormValue("dns_mode")
@@ -499,10 +489,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 			return true, "", err
 		}
 		defer tx.Rollback()
-		for k, v := range map[string]string{"dns_direct": dns, "dns_mode": dm, "dns_direct_servers": directServers, "dns_vpn_servers": vpnServers, "gateway_enabled": r.FormValue("gateway")} {
-			if k == "gateway_enabled" && v != "1" {
-				v = "0"
-			}
+		for k, v := range map[string]string{"dns_direct": dns, "dns_mode": dm, "dns_direct_servers": directServers, "dns_vpn_servers": vpnServers} {
 			if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", k, v); e != nil {
 				return true, "", e
 			}

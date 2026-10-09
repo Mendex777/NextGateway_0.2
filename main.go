@@ -653,7 +653,7 @@ func main() {
  CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY,name TEXT NOT NULL,url TEXT NOT NULL,headers TEXT NOT NULL,updated TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS nodes(id INTEGER PRIMARY KEY,source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,uri TEXT NOT NULL,name TEXT NOT NULL,host TEXT NOT NULL,port TEXT NOT NULL,transport TEXT NOT NULL,security TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS rules(id INTEGER PRIMARY KEY,priority INTEGER NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,value TEXT NOT NULL,target TEXT NOT NULL);
- INSERT OR IGNORE INTO settings VALUES('default_route','direct'),('dns_direct','1.1.1.1'),('dns_mode','direct'),('gateway_enabled','0'),('selected_node','');`)
+ INSERT OR IGNORE INTO settings VALUES('default_route','direct'),('dns_direct',''),('dns_mode','direct'),('gateway_enabled','0'),('selected_node','');`)
 	if e != nil {
 		log.Fatal(e)
 	}

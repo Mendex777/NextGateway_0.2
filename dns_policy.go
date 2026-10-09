@@ -1,12 +1,10 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"net/url"
 	"strings"
-	"time"
 )
 
 func normalizeDNSServers(raw, fallback string) (string, error) {
@@ -99,41 +97,18 @@ func dnsPolicy(bootstrap, mode string, rules []Rule, hosts []string) ([]any, []a
 	return servers, routes, nil
 }
 
-func diagnoseDNS() (string, error) {
-	start := time.Now()
-	c, e := net.DialTimeout("udp4", "127.0.0.1:1053", time.Second)
-	if e != nil {
-		return "", e
+// An empty override follows the VM resolver configuration at apply time.
+func bootstrapDNS() string {
+	if override := strings.TrimSpace(setting("dns_direct")); override != "" {
+		return override
 	}
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(8 * time.Second))
-	id := uint16(time.Now().UnixNano())
-	q := make([]byte, 12)
-	binary.BigEndian.PutUint16(q, id)
-	q[2] = 1
-	q[5] = 1
-	for _, part := range strings.Split("example.com", ".") {
-		q = append(q, byte(len(part)))
-		q = append(q, part...)
+	network, err := detectNetwork()
+	if err == nil {
+		for _, server := range strings.Fields(network.SystemDNS) {
+			if validIPv4(server) {
+				return server
+			}
+		}
 	}
-	q = append(q, 0, 0, 1, 0, 1)
-	if _, e = c.Write(q); e != nil {
-		return "", e
-	}
-	b := make([]byte, 4096)
-	n, e := c.Read(b)
-	if e != nil {
-		return "", fmt.Errorf("DNS не ответил: %v", e)
-	}
-	if n < 12 || binary.BigEndian.Uint16(b) != id || b[2]&128 == 0 {
-		return "", fmt.Errorf("Некорректный ответ DNS")
-	}
-	if b[3]&15 != 0 {
-		return "", fmt.Errorf("DNS вернул код ошибки %d", b[3]&15)
-	}
-	count := binary.BigEndian.Uint16(b[6:8])
-	if count == 0 {
-		return "", fmt.Errorf("DNS ответил без адресов")
-	}
-	return fmt.Sprintf("Работающий DNS Xray: example.com, ответов %d, %d мс (возможен ответ из кеша)", count, time.Since(start).Milliseconds()), nil
+	return ""
 }

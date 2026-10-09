@@ -498,19 +498,11 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
           initialValues={{
             dns: p.DNS,
             dns_mode: p.DNSMode,
-            gateway: p.Gateway === "1",
             dns_direct_servers: p.DNSDirectServers,
             dns_vpn_servers: p.DNSVPNServers,
           }}
           onFinish={(v) => void run("gateway-settings", v).catch(() => {})}
         >
-          <Form.Item
-            name="gateway"
-            label="Прозрачный шлюз"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
           <Form.Item name="dns_mode" label="Режим DNS">
             <Select
               options={[
@@ -538,17 +530,15 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
           </div>
           <Form.Item
             name="dns"
-            label="Прямой DNS (IPv4)"
-            extra="Также используется для начального разрешения адреса VPN-сервера"
-            rules={required}
+            label="DNS для запуска VPN и DoH"
+            extra="По умолчанию используется системный DNS ВМ. Для переопределения укажите IPv4; очистите поле, чтобы вернуть автоматический выбор."
           >
-            <Input />
+            <Input placeholder="Автоматически: системный DNS ВМ" />
           </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit">
               Сохранить
             </Button>
-            <Button onClick={() => doRun("dns-diagnose")}>Проверить DNS</Button>
           </Space>
         </Form>
     </Card>
