@@ -38,6 +38,7 @@ if ! systemctl is-active --quiet ngpanel; then
 import socket,sys
 host,port=sys.argv[1].rsplit(':',1)
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
+    sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
     try:sock.bind((host,int(port)))
     except OSError:raise RuntimeError('Panel port is occupied: '+sys.argv[1])
 PY
@@ -256,6 +257,20 @@ with sqlite3.connect(database) as db:
             address=next(a for link in links for a in link.get('addr_info',[]) if ipaddress.ip_address(route['gateway']) in ipaddress.ip_network(str(a['local'])+'/'+str(a['prefixlen']),strict=False))
             network=dict(interface=route['dev'],address=address['local'],cidr=str(ipaddress.ip_network(str(address['local'])+'/'+str(address['prefixlen']),strict=False)),router=route['gateway'])
             db.execute("INSERT OR REPLACE INTO settings VALUES('gateway_network',?)",(json.dumps(network),))
+            # Use the VM's working upstream DNS, excluding local stubs and this VM.
+            for resolver_file in ('/run/systemd/resolve/resolv.conf','/etc/resolv.conf'):
+                file=pathlib.Path(resolver_file)
+                if not file.is_file():continue
+                resolvers=[]
+                for line in file.read_text().splitlines():
+                    parts=line.split()
+                    if len(parts)<2 or parts[0]!='nameserver':continue
+                    try:resolver=ipaddress.ip_address(parts[1])
+                    except ValueError:continue
+                    if resolver.version==4 and not resolver.is_loopback and not resolver.is_unspecified and str(resolver)!=network['address']:resolvers.append(str(resolver))
+                if resolvers:
+                    db.execute("INSERT OR REPLACE INTO settings VALUES('dns_direct',?)",(resolvers[0],))
+                    break
         db.execute("INSERT OR REPLACE INTO settings VALUES('gateway_enabled','1')")
     db.execute("INSERT OR REPLACE INTO settings VALUES('setup_skipped','1')")
 if initial:

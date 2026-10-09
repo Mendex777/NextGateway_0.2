@@ -29,6 +29,7 @@ class SetupTests(unittest.TestCase):
             root=pathlib.Path(directory)
             def path(name):return root/name.lstrip('/')
             database=path('/var/lib/ngpanel/db/panel.db');database.parent.mkdir(parents=True)
+            resolver=path('/run/systemd/resolve/resolv.conf');resolver.parent.mkdir(parents=True);resolver.write_text('nameserver 127.0.0.53\nnameserver 192.168.50.2\n')
             network={'interface':'eth0','address':'192.168.50.8','cidr':'192.168.50.0/24','router':'192.168.50.2'}
             with closing(sqlite3.connect(database)) as db, db:
                 db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)')
@@ -58,7 +59,7 @@ class SetupTests(unittest.TestCase):
                 state.write_text(json.dumps({'Action':'apply','State':'error' if fail else 'ok','Message':'test failure','Updated':'9999'}))
                 return io.BytesIO(b'{"ok":true,"since":"2026"}')
             code=SCRIPT.replace('import ipaddress,json,pathlib,sqlite3,subprocess,sys,time,urllib.request,urllib.parse','import ipaddress,json,pathlib,sqlite3,subprocess,sys,time,urllib.request,urllib.parse\nfrom contextlib import closing').replace('with sqlite3.connect(database) as db:', 'with closing(sqlite3.connect(database)) as db, db:')
-            for prefix in ('/var/lib/ngpanel','/etc/ngpanel','/usr/local','/opt/ngpanel'):
+            for prefix in ('/var/lib/ngpanel','/etc/ngpanel','/usr/local','/opt/ngpanel','/run/systemd/resolve','/etc/resolv.conf'):
                 code=code.replace(prefix,str(path(prefix)).replace('\\','/'))
             with mock.patch.object(sys,'argv',['setup','0.0.0.0:8181']),mock.patch('subprocess.run',command),mock.patch('subprocess.check_output',output),mock.patch('urllib.request.urlopen',response),mock.patch('time.sleep'),mock.patch('sys.stdout',io.StringIO()):
                 if fail:
@@ -68,6 +69,7 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(settings['custom_setting'],'keep');self.assertEqual(settings['selected_node'],'42')
             self.assertEqual(json.loads(settings['gateway_network']),network)
             self.assertEqual(settings['gateway_enabled'],'0' if existing else '1')
+            if not existing:self.assertEqual(settings['dns_direct'],'192.168.50.2')
             self.assertEqual(len(posts),0 if existing else 1)
             if existing:self.assertEqual(path('/etc/ngpanel/config.json').read_text(),'keep applied config')
             if broken:self.assertTrue(any(a[-1].endswith('install-xray.py') for a in calls));self.assertTrue(any(a[-1].endswith('update-geodata.py') for a in calls))
