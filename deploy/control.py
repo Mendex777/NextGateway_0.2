@@ -351,7 +351,7 @@ def network(n):
     atomic(backup,json.dumps({'content':target.read_text() if target.exists() else None,'network':n}),0o600)
     mode=n.get('mode','')
     lines=['network:', '  version: 2', '  ethernets:', '    '+json.dumps(n['interface'])+':', '      dhcp4: '+('false' if mode=='static' else 'true'), '      dhcp6: false', '      accept-ra: false', '      link-local: []']
-    servers=n.get('system_dns','').split()
+    servers=[] if mode=='dhcp' else n.get('system_dns','').split()
     if mode!='static':
         lines+=['      dhcp4-overrides:', '        use-routes: '+('true' if mode=='dhcp' else 'false'), '        use-dns: '+('false' if servers else 'true')]
     if mode!='static': lines+=['      addresses: []']

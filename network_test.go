@@ -38,3 +38,14 @@ func TestSavedNetworkIsIncludedInJob(t *testing.T) {
 		t.Fatal("saved network lost")
 	}
 }
+
+func TestDHCPDoesNotKeepManualDNS(t *testing.T) {
+	configDatabase(t)
+	n := GatewayNetwork{Interface: "ens18", Address: "192.168.1.84", CIDR: "192.168.1.0/24", Router: "192.168.1.1", Mode: "dhcp", SystemDNS: "1.1.1.1"}
+	if err := saveNetwork(n); err != nil {
+		t.Fatal(err)
+	}
+	if saved := gatewayNetwork(); saved.Mode != "dhcp" || saved.SystemDNS != "" {
+		t.Fatalf("manual DNS persisted in automatic mode: %+v", saved)
+	}
+}

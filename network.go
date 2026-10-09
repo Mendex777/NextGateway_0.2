@@ -138,6 +138,10 @@ func gatewayNetwork() GatewayNetwork {
 }
 
 func saveNetwork(n GatewayNetwork) error {
+	if n.Mode == "dhcp" {
+		n.SystemDNS = ""
+	}
+
 	if e := n.validate(); e != nil {
 		return e
 	}

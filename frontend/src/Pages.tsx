@@ -438,6 +438,8 @@ export function Devices({ p, run }: { p: Page; run: Run }) {
 }
 export function Gateway({ p, run }: { p: Page; run: Run }) {
   const doRun = (name: string) => void run(name).catch(() => {});
+  const [networkForm] = Form.useForm();
+  const networkMode = Form.useWatch("mode", networkForm);
   return <>
     <Card title="Настройки сети ВМ">
       <Descriptions items={[
@@ -457,12 +459,17 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
                   <Alert type="error" title={p.NetworkError} />
                 )}
                 <Form
+                  form={networkForm}
                   key={JSON.stringify(p.Network)}
                   layout="vertical"
                   initialValues={{ ...p.Network, mode: p.Network.mode || "router" }}
                   onFinish={(v) => void run("network-save", v).catch(() => {})}
                 >
-                  <Form.Item name="mode" label="Получение сетевых настроек"><Select options={[{value:"dhcp",label:"Автоматически (DHCP)"},{value:"router",label:"DHCP с указанным шлюзом"},{value:"static",label:"Статический IP"}]} /></Form.Item>
+                  <Form.Item name="mode" label="Получение сетевых настроек"><Select onChange={(mode) => {
+                    if (mode === "dhcp") networkForm.setFieldsValue({address:p.DetectedNetwork.address,cidr:p.DetectedNetwork.cidr,router:p.DetectedNetwork.router,system_dns:""});
+                    if (mode === "router") networkForm.setFieldsValue({address:p.DetectedNetwork.address,cidr:p.DetectedNetwork.cidr});
+                    if (mode === "static" && !networkForm.getFieldValue("system_dns")) networkForm.setFieldValue("system_dns",p.DetectedNetwork.system_dns || "");
+                  }} options={[{value:"dhcp",label:"Автоматически (DHCP)"},{value:"router",label:"DHCP с указанным шлюзом"},{value:"static",label:"Статический IP"}]} /></Form.Item>
                   <Form.Item noStyle shouldUpdate={(a,b)=>a.mode!==b.mode}>{({getFieldValue}) => <div className="form-columns">
                     {[
                       { name: "interface", label: "Интерфейс LAN" },
@@ -476,11 +483,11 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
                         label={f.label}
                         rules={required}
                       >
-                        <Input disabled={getFieldValue("mode")==="dhcp" || (getFieldValue("mode")==="router" && (f.name==="address" || f.name==="cidr"))} />
+                        <Input disabled={(getFieldValue("mode")==="dhcp" && f.name!=="interface") || (getFieldValue("mode")==="router" && (f.name==="address" || f.name==="cidr"))} />
                       </Form.Item>
                     ))}
                   </div>}</Form.Item>
-                  <Form.Item name="system_dns" label="Системный DNS ВМ" extra="IPv4, каждый с новой строки. В режиме DHCP пустое поле означает DNS от роутера."><Input.TextArea rows={2} /></Form.Item><Button htmlType="submit">Сохранить параметры</Button>
+                  <Form.Item name="system_dns" label="Системный DNS ВМ" extra="IPv4, каждый с новой строки. В режиме DHCP пустое поле означает DNS от роутера."><Input.TextArea rows={2} disabled={networkMode === "dhcp"} placeholder={networkMode === "dhcp" ? "Автоматически от DHCP" : ""} /></Form.Item>{networkMode === "dhcp" && <Alert type="info" title="IP, шлюз и системный DNS будут получены от DHCP после применения сети ВМ. Выше показаны текущие параметры." className="section-gap" />}<Button htmlType="submit">Сохранить параметры</Button>
                 </Form>
                 <Space className="section-gap" wrap>
                   <Button onClick={() => doRun("network-detect")}>
