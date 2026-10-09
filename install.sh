@@ -1,14 +1,13 @@
 #!/bin/sh
-# Install only the panel; Xray and gateway components are installed from its UI.
+# Install or repair the complete NGPanel service, preserving existing settings.
 set -eu
 [ "$(id -u)" = 0 ] || { echo "Run this installer as root (sudo bash)." >&2; exit 1; }
 . /etc/os-release
 [ "$ID" = ubuntu ] || { echo "Supported OS: Ubuntu" >&2; exit 1; }
 [ "$(dpkg --print-architecture)" = amd64 ] || { echo "Beta supports amd64" >&2; exit 1; }
-if [ -f /etc/systemd/system/ngpanel.service ]; then
- echo "NGPanel is already installed. Update it from the web panel." >&2
- exit 1
-fi
+exec 9>/run/ngpanel-installer.lock
+flock -n 9 || { echo "Another NGPanel installer is running." >&2; exit 1; }
+echo "[1/5] Checking system and downloading the verified stable release"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates python3
@@ -66,4 +65,4 @@ for name in files:
 print('Verified stable release: '+tag,flush=True)
 PY
 NG_PREBUILT=1 sh "$NG_INSTALL_STAGE/deploy/install-panel.sh"
-echo "Panel installed. Open http://<VM-IPv4>:8080/ and install Xray from the UI."
+echo "NGPanel installation completed."

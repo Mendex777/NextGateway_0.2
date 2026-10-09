@@ -543,7 +543,7 @@ func pageData(r *http.Request) Page {
 		db.QueryRow("SELECT count(*) FROM nodes").Scan(&p.NodeCount)
 		p.RuleCount = len(allRules())
 		p.DeviceCount = len(devices())
-		p.Wizard = r.URL.Query().Get("setup") == "1" || (p.Runtime.ConfigHash == "" && setting("setup_skipped") != "1")
+		p.Wizard = r.URL.Query().Get("setup") == "1"
 		if b, e := os.ReadFile("/var/lib/ngpanel/install-status"); e == nil {
 			p.Install = string(b)
 		}
