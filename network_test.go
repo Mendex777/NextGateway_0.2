@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestNetworkValidationAndDevices(t *testing.T) {
-	n := GatewayNetwork{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.1"}
+	n := GatewayNetwork{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.1", "", ""}
 	if e := n.validate(); e != nil {
 		t.Fatal(e)
 	}
@@ -16,10 +16,10 @@ func TestNetworkValidationAndDevices(t *testing.T) {
 		t.Fatal("device from new subnet rejected")
 	}
 	invalid := []GatewayNetwork{
-		{"enp2s0\";bad", "10.20.30.10", "10.20.30.0/24", "10.20.30.1"},
-		{"enp2s0", "10.20.30.10", "10.20.30.10/24", "10.20.30.1"},
-		{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.31.1"},
-		{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.10"},
+		{"enp2s0\";bad", "10.20.30.10", "10.20.30.0/24", "10.20.30.1", "", ""},
+		{"enp2s0", "10.20.30.10", "10.20.30.10/24", "10.20.30.1", "", ""},
+		{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.31.1", "", ""},
+		{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.10", "", ""},
 	}
 	for _, v := range invalid {
 		if v.validate() == nil {
@@ -30,7 +30,7 @@ func TestNetworkValidationAndDevices(t *testing.T) {
 
 func TestSavedNetworkIsIncludedInJob(t *testing.T) {
 	configDatabase(t)
-	n := GatewayNetwork{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.1"}
+	n := GatewayNetwork{"enp2s0", "10.20.30.10", "10.20.30.0/24", "10.20.30.1", "", ""}
 	if e := saveNetwork(n); e != nil {
 		t.Fatal(e)
 	}

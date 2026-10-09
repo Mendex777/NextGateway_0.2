@@ -461,8 +461,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 		e = saveBalance(r)
 		msg = "Группа сохранена. Выберите её выходом нужных маршрутов и примените конфигурацию"
 	case "network-save":
-		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router")})
-		msg = "Параметры сети сохранены; примените выход ВМ и конфигурацию шлюза"
+		e = saveNetwork(GatewayNetwork{Interface: r.FormValue("interface"), Address: r.FormValue("address"), CIDR: r.FormValue("cidr"), Router: r.FormValue("router"), Mode: r.FormValue("mode"), SystemDNS: r.FormValue("system_dns")})
+		msg = "Параметры сети сохранены; примените сеть ВМ и конфигурацию шлюза"
 	case "network-detect":
 		var n GatewayNetwork
 		n, e = detectNetwork()
@@ -472,7 +472,7 @@ func controlAction(r *http.Request) (bool, string, error) {
 		msg = "Параметры определены по текущей сети; проверьте адрес роутера"
 	case "network":
 		e = enqueue("network", nil)
-		msg = "Изменение выхода ВМ запрошено; DHCP-адрес сохраняется"
+		msg = "Изменение сети ВМ запрошено; после применения подтвердите доступность панели"
 	case "gateway-settings":
 		dns := r.FormValue("dns")
 		if !validIPv4(dns) {

@@ -42,7 +42,7 @@ const navigation = [
   },
   { key: "devices", label: "Устройства", icon: <TeamOutlined /> },
   { key: "routing", label: "Маршрутизация", icon: <SwapOutlined /> },
-  { key: "gateway", label: "DNS и шлюз", icon: <ApartmentOutlined /> },
+  { key: "gateway", label: "Сеть и DNS", icon: <ApartmentOutlined /> },
   { key: "diagnostics", label: "Диагностика", icon: <ToolOutlined /> },
   { key: "settings", label: "Настройки панели", icon: <SettingOutlined /> },
 ];

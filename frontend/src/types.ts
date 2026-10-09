@@ -80,6 +80,8 @@ export interface Network {
   address: string;
   cidr: string;
   router: string;
+  mode?: string;
+  system_dns?: string;
 }
 export interface Component {
   Name: string;

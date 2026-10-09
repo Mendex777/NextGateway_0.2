@@ -28,6 +28,27 @@ class NetworkTests(unittest.TestCase):
         self.assertNotIn('1.1.1.1',config)
         self.assertNotIn('8.8.8.8',config)
 
+    def test_static_ip_and_system_dns(self):
+        writes=[]
+        n=dict(self.network,mode='static',system_dns='192.168.1.1\n1.1.1.1')
+        with patch.object(control,'migrate_network'), patch.object(control,'install_network_recovery'), patch.object(control.pathlib.Path,'exists',return_value=False), patch.object(control,'atomic',side_effect=lambda path,data,*args:writes.append((str(path),data))), patch.object(control,'run'):
+            control.network(n)
+        config=next(data for path,data in writes if path.endswith('90-ngpanel.yaml'))
+        self.assertIn('dhcp4: false',config)
+        self.assertIn('10.20.30.10/24',config)
+        self.assertIn('192.168.1.1',config)
+        self.assertIn('via: 10.20.30.1',config)
+
+    def test_dhcp_uses_automatic_route_and_dns(self):
+        writes=[]
+        n=dict(self.network,mode='dhcp')
+        with patch.object(control,'migrate_network'), patch.object(control,'install_network_recovery'), patch.object(control.pathlib.Path,'exists',return_value=False), patch.object(control,'atomic',side_effect=lambda path,data,*args:writes.append((str(path),data))), patch.object(control,'run'):
+            control.network(n)
+        config=next(data for path,data in writes if path.endswith('90-ngpanel.yaml'))
+        self.assertIn('use-routes: true',config)
+        self.assertIn('use-dns: true',config)
+        self.assertNotIn('via:',config)
+
     def test_reject_injection_and_invalid_addresses(self):
         for field,value in [('interface','enp2s0";bad'),('router','10.20.31.1'),('address','10.20.30.255'),('cidr','10.20.30.10/24')]:
             with self.subTest(field=field):

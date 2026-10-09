@@ -98,8 +98,14 @@ def validate(config):
     walk(config)
 
 def validate_network(n, live=False):
-    if not isinstance(n,dict) or set(n)!={'interface','address','cidr','router'}:
+    if not isinstance(n,dict) or not {'interface','address','cidr','router'} <= set(n) or set(n)-{'interface','address','cidr','router','mode','system_dns'}:
         raise ValueError('Укажите параметры сети на странице DNS и шлюз')
+    if n.get('mode','') not in ('','dhcp','static','router'): raise ValueError('Некорректный режим сети')
+    servers=n.get('system_dns','').split()
+    for server in servers:
+        ip=ipaddress.IPv4Address(server)
+        if ip.is_loopback or ip.is_unspecified: raise ValueError('Некорректный системный DNS')
+    if n.get('mode')=='static' and not servers: raise ValueError('Укажите системный DNS ВМ')
     iface=n['interface']
     if not isinstance(iface,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}',iface) or iface=='lo':
         raise ValueError('Некорректный интерфейс LAN')
@@ -335,7 +341,7 @@ WantedBy=multi-user.target
     run(['systemctl','enable','ngpanel-network-recovery.service'])
 
 def network(n):
-    n=validate_network(n,True)
+    n=validate_network(n,False)
     migrate_network()
     target=pathlib.Path('/etc/netplan/90-ngpanel.yaml')
     backup=pathlib.Path('/etc/ngpanel/network-backup.json')
@@ -343,22 +349,18 @@ def network(n):
         raise ValueError('Сначала подтвердите или дождитесь отката предыдущего изменения сети')
     install_network_recovery()
     atomic(backup,json.dumps({'content':target.read_text() if target.exists() else None,'network':n}),0o600)
-    config='''network:
-  version: 2
-  ethernets:
-    __INTERFACE__:
-      dhcp4: true
-      dhcp6: false
-      accept-ra: false
-      link-local: []
-      dhcp4-overrides:
-        use-routes: false
-        use-dns: true
-      routes:
-        - to: default
-          via: __ROUTER__
-'''
-    config=config.replace("__INTERFACE__",json.dumps(n["interface"])).replace("__ROUTER__",n["router"])
+    mode=n.get('mode','')
+    lines=['network:', '  version: 2', '  ethernets:', '    '+json.dumps(n['interface'])+':', '      dhcp4: '+('false' if mode=='static' else 'true'), '      dhcp6: false', '      accept-ra: false', '      link-local: []']
+    servers=n.get('system_dns','').split()
+    if mode!='static':
+        lines+=['      dhcp4-overrides:', '        use-routes: '+('true' if mode=='dhcp' else 'false'), '        use-dns: '+('false' if servers else 'true')]
+    if mode!='static': lines+=['      addresses: []']
+    if mode=='static':
+        prefix=ipaddress.IPv4Network(n['cidr']).prefixlen
+        lines+=['      addresses: ['+json.dumps(n['address']+'/'+str(prefix))+']']
+    if mode!='dhcp': lines+=['      routes:', '        - to: default', '          via: '+n['router']]
+    if servers: lines+=['      nameservers:', '        addresses: '+json.dumps(servers)]
+    config='\n'.join(lines)+'\n'
     atomic(target,config,0o600)
     try:
         run(['netplan','generate'])
@@ -437,8 +439,16 @@ if __name__ == '__main__':
                 if not pathlib.Path('/etc/ngpanel/network-backup.json').exists():raise ValueError('Нет ожидающего изменения сети')
                 pending=load(pathlib.Path('/etc/ngpanel/network-backup.json'))
                 if pending.get('network'):
-                    validate_network(pending['network'],True)
-                    verify_default(pending['network'])
+                    desired=pending['network']
+                    if desired.get('mode')=='dhcp':
+                        actual=applied_network({})
+                        actual.update(mode='dhcp',system_dns=desired.get('system_dns',''))
+                        import sqlite3
+                        with sqlite3.connect(ROOT/'db/panel.db') as connection:
+                            connection.execute("UPDATE settings SET value=? WHERE key='gateway_network'",(json.dumps(actual),))
+                    else:
+                        validate_network(desired,True)
+                        verify_default(desired)
                 run(['systemctl','stop','ngpanel-network-revert.timer'],check=False)
                 pathlib.Path('/etc/ngpanel/network-backup.json').unlink(missing_ok=True)
                 runtime['Network']='direct';message='Выход ВМ через роутер подтверждён'

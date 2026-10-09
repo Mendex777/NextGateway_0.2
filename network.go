@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 )
 
 type GatewayNetwork struct {
@@ -13,9 +15,24 @@ type GatewayNetwork struct {
 	Address   string `json:"address"`
 	CIDR      string `json:"cidr"`
 	Router    string `json:"router"`
+	Mode      string `json:"mode,omitempty"`
+	SystemDNS string `json:"system_dns,omitempty"`
 }
 
 func (n GatewayNetwork) validate() error {
+	if n.Mode != "" && n.Mode != "dhcp" && n.Mode != "static" && n.Mode != "router" {
+		return fmt.Errorf("Выберите DHCP или статическую сеть")
+	}
+	for _, server := range strings.Fields(n.SystemDNS) {
+		ip := net.ParseIP(server)
+		if ip == nil || ip.To4() == nil || ip.IsUnspecified() || ip.IsLoopback() {
+			return fmt.Errorf("Системный DNS ВМ: укажите IPv4")
+		}
+	}
+	if n.Mode == "static" && len(strings.Fields(n.SystemDNS)) == 0 {
+		return fmt.Errorf("Укажите системный DNS ВМ")
+	}
+
 	if !regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,15}$`).MatchString(n.Interface) || n.Interface == "lo" {
 		return fmt.Errorf("Укажите сетевой интерфейс LAN")
 	}
@@ -82,6 +99,26 @@ func detectNetwork() (GatewayNetwork, error) {
 			if e == nil && subnet.Contains(net.ParseIP(n.Router)) {
 				n.Address = a.Local
 				n.CIDR = subnet.String()
+				for _, path := range []string{"/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"} {
+					raw, err := os.ReadFile(path)
+					if err != nil {
+						continue
+					}
+					var servers []string
+					for _, line := range strings.Split(string(raw), "\n") {
+						fields := strings.Fields(line)
+						if len(fields) >= 2 && fields[0] == "nameserver" {
+							ip := net.ParseIP(fields[1])
+							if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+								servers = append(servers, ip.String())
+							}
+						}
+					}
+					if len(servers) > 0 {
+						n.SystemDNS = strings.Join(servers, "\n")
+						break
+					}
+				}
 				return n, n.validate()
 			}
 		}

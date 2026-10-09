@@ -438,32 +438,67 @@ export function Devices({ p, run }: { p: Page; run: Run }) {
 }
 export function Gateway({ p, run }: { p: Page; run: Run }) {
   const doRun = (name: string) => void run(name).catch(() => {});
-  return (
-    <>
-      <Card title="DNS и шлюз">
-        <Descriptions
-          items={[
-            {
-              key: "address",
-              label: "Адрес",
-              children: p.DetectedNetwork.address,
-            },
-            {
-              key: "interface",
-              label: "Интерфейс",
-              children: p.DetectedNetwork.interface,
-            },
-            {
-              key: "gateway",
-              label: "Перехват трафика",
-              children: (
-                <Tag color={p.Runtime.Gateway ? "green" : "orange"}>
-                  {p.Runtime.Gateway ? "Включён" : "Выключен"}
-                </Tag>
-              ),
-            },
-          ]}
-        />
+  return <>
+    <Card title="Настройки сети ВМ">
+      <Descriptions items={[
+        {key:"address",label:"Текущий IP",children:p.DetectedNetwork.address},
+        {key:"interface",label:"Интерфейс",children:p.DetectedNetwork.interface},
+        {key:"router",label:"Текущий шлюз",children:p.DetectedNetwork.router},
+        {key:"dns",label:"Текущий системный DNS",children:p.DetectedNetwork.system_dns || "—"},
+      ]} />
+      <Typography.Paragraph type="secondary">По умолчанию настройки получает DHCP. Системный DNS используется самой ВМ для загрузки подписок и обновлений.</Typography.Paragraph>
+                {p.Runtime.Network === "pending" && (
+                  <Alert
+                    type="warning"
+                    title="Подтвердите доступность панели в течение 120 секунд, иначе изменение сети будет отменено."
+                  />
+                )}
+                {p.NetworkError && (
+                  <Alert type="error" title={p.NetworkError} />
+                )}
+                <Form
+                  key={JSON.stringify(p.Network)}
+                  layout="vertical"
+                  initialValues={{ ...p.Network, mode: p.Network.mode || "router" }}
+                  onFinish={(v) => void run("network-save", v).catch(() => {})}
+                >
+                  <Form.Item name="mode" label="Получение сетевых настроек"><Select options={[{value:"dhcp",label:"Автоматически (DHCP)"},{value:"router",label:"DHCP с указанным шлюзом"},{value:"static",label:"Статический IP"}]} /></Form.Item>
+                  <Form.Item noStyle shouldUpdate={(a,b)=>a.mode!==b.mode}>{({getFieldValue}) => <div className="form-columns">
+                    {[
+                      { name: "interface", label: "Интерфейс LAN" },
+                      { name: "address", label: "IPv4 ВМ" },
+                      { name: "cidr", label: "Подсеть LAN (CIDR)" },
+                      { name: "router", label: "Шлюз ВМ" },
+                    ].map((f) => (
+                      <Form.Item
+                        key={f.name}
+                        name={f.name}
+                        label={f.label}
+                        rules={required}
+                      >
+                        <Input disabled={getFieldValue("mode")==="dhcp" || (getFieldValue("mode")==="router" && (f.name==="address" || f.name==="cidr"))} />
+                      </Form.Item>
+                    ))}
+                  </div>}</Form.Item>
+                  <Form.Item name="system_dns" label="Системный DNS ВМ" extra="IPv4, каждый с новой строки. В режиме DHCP пустое поле означает DNS от роутера."><Input.TextArea rows={2} /></Form.Item><Button htmlType="submit">Сохранить параметры</Button>
+                </Form>
+                <Space className="section-gap" wrap>
+                  <Button onClick={() => doRun("network-detect")}>
+                    Определить по текущей сети
+                  </Button>
+                  <Button onClick={() => doRun("network")}>
+                    Применить сеть ВМ
+                  </Button>
+                  <Button
+                    disabled={p.Runtime.Network !== "pending"}
+                    onClick={() => doRun("network-confirm")}
+                  >
+                    Подтвердить доступность
+                  </Button>
+                </Space>
+    </Card>
+    <Card title="DNS Xray" className="section-gap">
+      <Typography.Paragraph type="secondary">DNS для трафика через Xray. Эти настройки не меняют системный DNS ВМ.</Typography.Paragraph>
         <Form
           layout="vertical"
           initialValues={{
@@ -522,85 +557,8 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
             <Button onClick={() => doRun("dns-diagnose")}>Проверить DNS</Button>
           </Space>
         </Form>
-      </Card>
-      <Collapse
-        className="section-gap"
-        defaultActiveKey={p.Runtime.Network === "pending" ? ["network"] : []}
-        items={[
-          {
-            key: "network",
-            label: "Сеть ВМ и выход через роутер",
-            children: (
-              <>
-                {p.Runtime.Network === "pending" && (
-                  <Alert
-                    type="warning"
-                    title="Подтвердите доступность панели в течение 120 секунд, иначе изменение сети будет отменено."
-                  />
-                )}
-                {p.NetworkError && (
-                  <Alert type="error" title={p.NetworkError} />
-                )}
-                <Form
-                  key={JSON.stringify(p.Network)}
-                  layout="vertical"
-                  initialValues={p.Network}
-                  onFinish={(v) => void run("network-save", v).catch(() => {})}
-                >
-                  <div className="form-columns">
-                    {[
-                      { name: "interface", label: "Интерфейс LAN" },
-                      { name: "address", label: "IPv4 ВМ" },
-                      { name: "cidr", label: "Подсеть LAN (CIDR)" },
-                      { name: "router", label: "Основной роутер" },
-                    ].map((f) => (
-                      <Form.Item
-                        key={f.name}
-                        name={f.name}
-                        label={f.label}
-                        rules={required}
-                      >
-                        <Input />
-                      </Form.Item>
-                    ))}
-                  </div>
-                  <Button htmlType="submit">Сохранить параметры</Button>
-                </Form>
-                <Space className="section-gap" wrap>
-                  <Button onClick={() => doRun("network-detect")}>
-                    Определить по текущей сети
-                  </Button>
-                  <Button onClick={() => doRun("network")}>
-                    Применить выход ВМ
-                  </Button>
-                  <Button
-                    disabled={p.Runtime.Network !== "pending"}
-                    onClick={() => doRun("network-confirm")}
-                  >
-                    Подтвердить доступность
-                  </Button>
-                </Space>
-              </>
-            ),
-          },
-          {
-            key: "help",
-            label: "Как работает DNS",
-            children: (
-              <Typography.Paragraph>
-                Устройства отправляют DNS-запросы на адрес ВМ. В прямом режиме
-                их обрабатывают указанные здесь серверы; DNS роутера
-                используется только если указан его адрес. В режиме по правилам
-                домены VPN разрешаются через защищённый DNS и соответствующий
-                VPN. DoH задаётся ссылкой https://…/dns-query. DoT пока не
-                поддерживается. Несколько серверов указываются с новой строки.
-              </Typography.Paragraph>
-            ),
-          },
-        ]}
-      />
-    </>
-  );
+    </Card>
+  </>;
 }
 export function Diagnostics({ p, run }: { p: Page; run: Run }) {
   return (
