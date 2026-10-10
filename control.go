@@ -625,6 +625,35 @@ func controlAction(r *http.Request) (bool, string, error) {
 		}
 		e = tx.Commit()
 		msg = fmt.Sprintf("Исходящее подключение изменено для %d правил", len(ids))
+	case "rule-bulk-delete":
+		ids := strings.Split(r.FormValue("ids"), ",")
+		if len(ids) == 0 || len(ids) > 10000 {
+			return true, "", fmt.Errorf("Выберите правила")
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return true, "", err
+		}
+		defer tx.Rollback()
+		for _, raw := range ids {
+			id, err := strconv.Atoi(raw)
+			if err != nil || id <= 0 {
+				return true, "", fmt.Errorf("Некорректный номер правила")
+			}
+			result, err := tx.Exec("DELETE FROM rules WHERE id=?", id)
+			if err != nil {
+				return true, "", err
+			}
+			count, err := result.RowsAffected()
+			if err != nil || count != 1 {
+				return true, "", fmt.Errorf("Правило %d больше не существует", id)
+			}
+			if _, err = tx.Exec("DELETE FROM settings WHERE key IN (?,?)", fmt.Sprintf("rule_disabled:%d", id), fmt.Sprintf("rule_source:%d", id)); err != nil {
+				return true, "", err
+			}
+		}
+		e = tx.Commit()
+		msg = fmt.Sprintf("Удалено правил: %d", len(ids))
 	case "rule-toggle":
 		var id int
 		if e = db.QueryRow("SELECT id FROM rules WHERE id=?", r.FormValue("id")).Scan(&id); e == nil {

@@ -87,3 +87,21 @@ func TestFullBackupSettingsAndAppliedSnapshot(t *testing.T) {
 		}
 	}
 }
+
+func TestImportDefaultRouteCheckbox(t *testing.T) {
+	backupDB(t)
+	saveSetting("default_route", "proxy")
+	template := routeTemplate{Format: "ngpanel-routing", Version: 1, Default: "direct"}
+	if _, err := importRoutes(template, nil, nil, false, false, orderString(allRules())); err != nil {
+		t.Fatal(err)
+	}
+	if setting("default_route") != "proxy" {
+		t.Fatal("unchecked checkbox changed default")
+	}
+	if _, err := importRoutes(template, nil, nil, false, true, orderString(allRules())); err != nil {
+		t.Fatal(err)
+	}
+	if setting("default_route") != "direct" {
+		t.Fatal("checked checkbox failed to change default")
+	}
+}

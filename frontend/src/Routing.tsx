@@ -269,6 +269,12 @@ export default function Routing({
           try { await run("rule-bulk-target", {ids: selectedRules.join(","), target: bulkTarget}); setSelectedRules([]); }
           catch {} finally { setBulkSaving(false); }
         }}>Изменить исходящее</Button>
+        <Button danger disabled={bulkSaving} onClick={() => {
+          const ids = [...selectedRules];
+          modal.confirm({title: `Удалить выбранные правила (${ids.length})?`, content: "После удаления нажмите «Применить», чтобы обновить конфигурацию Xray.", okText: "Удалить", cancelText: "Отмена", okButtonProps: {danger: true}, onOk: async () => {
+            await run("rule-bulk-delete", {ids: ids.join(",")}); setSelectedRules([]);
+          }});
+        }}>Удалить выбранные</Button>
         <Button onClick={() => setSelectedRules([])}>Снять выделение</Button>
         <Tooltip title="Shift + флажок выделяет диапазон; обычный клик добавляет или убирает отдельное правило."><span>Shift: диапазон</span></Tooltip>
       </Space>}
