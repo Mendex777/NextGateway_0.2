@@ -608,7 +608,25 @@ export default function Routing({
         <Form.Item
           name="value"
           label="Пункт назначения"
-          extra="Каждое значение с новой строки. Для правила всего устройства не требуется."
+          extra={<>
+            <div>Каждое значение с новой строки. Для правила всего устройства не требуется.</div>
+            <details style={{marginTop: 8}}>
+              <summary style={{cursor: "pointer"}}>Форматы доменов и IP</summary>
+              <div style={{marginTop: 8, lineHeight: 1.7}}>
+                <div><strong>Тип «Домены»</strong></div>
+                <div><code>full:api.example.com</code> — только это имя, без поддоменов.</div>
+                <div><code>domain:example.com</code> — сам домен и все его поддомены.</div>
+                <div><code>example.com</code> — то же, что <code>domain:example.com</code>.</div>
+                <div><code>geosite:youtube</code> — список доменов из установленной geo-базы.</div>
+                <div>Не указывайте https://, путь страницы или *. Для поддоменов используйте domain:.</div>
+                <div style={{marginTop: 8}}><strong>Тип «IP»</strong></div>
+                <div><code>203.0.113.10</code> — один IPv4-адрес.</div>
+                <div><code>203.0.113.0/24</code> — подсеть, от 203.0.113.0 до 203.0.113.255.</div>
+                <div><code>geoip:telegram</code> — список IP-сетей из установленной geo-базы.</div>
+                <div>IPv6 и диапазоны через дефис пока не поддерживаются.</div>
+              </div>
+            </details>
+          </>}
         >
           <Input.TextArea rows={5} />
         </Form.Item>
