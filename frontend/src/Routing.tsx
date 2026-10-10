@@ -1,3 +1,4 @@
+import { Devices } from "./Pages";
 import RoutingTransfer from "./RoutingTransfer";
 import { FlagText } from "./FlagText";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -30,6 +31,7 @@ import {
   MoreOutlined,
   PlusOutlined,
   SwapOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import {
   DndContext,
@@ -124,7 +126,7 @@ export default function Routing({
   const { modal, message } = App.useApp();
   const [geoTarget, setGeoTarget] = useState("proxy"),
     [geoFilter, setGeoFilter] = useState("");
-  const [tab, setTab] = useState("rules"),
+  const [tab, setTab] = useState(p.Tab === "devices" ? "devices" : "rules"),
     [rules, setRules] = useState(p.Rules || []),
     [editing, setEditing] = useState<Rule | null | undefined>(),
     [result, setResult] = useState<RouteResult | null>(null),
@@ -558,6 +560,12 @@ export default function Routing({
               label: "Маршрутизация",
               icon: <SwapOutlined />,
               children: rulesPanel,
+            },
+            {
+              key: "devices",
+              label: "Устройства",
+              icon: <TeamOutlined />,
+              children: <Devices p={p} run={run} />,
             },
             {
               key: "test",

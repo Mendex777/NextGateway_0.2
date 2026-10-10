@@ -584,7 +584,7 @@ func pageData(r *http.Request) Page {
 	if p.Tab == "nodes" {
 		p.Nodes = activeNodes(allNodes())
 	}
-	if p.Tab == "devices" {
+	if p.Tab == "devices" || p.Tab == "routing" {
 		p.Devices = devices()
 		p.DeviceDiscovery = setting("device_discovery")
 		for _, d := range p.Devices {

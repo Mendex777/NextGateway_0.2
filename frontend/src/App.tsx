@@ -32,7 +32,7 @@ import PanelSettings from "./PanelSettings";
 import Routing from "./Routing";
 import Subscriptions from "./Subscriptions";
 import Dashboard from "./Dashboard";
-import { Devices, Gateway, Diagnostics, Backup } from "./Pages";
+import { Gateway, Diagnostics, Backup } from "./Pages";
 const navigation = [
   { key: "status", label: "Главная", icon: <DashboardOutlined /> },
   {
@@ -40,7 +40,6 @@ const navigation = [
     label: "Подписки и подключения",
     icon: <SafetyOutlined />,
   },
-  { key: "devices", label: "Устройства", icon: <TeamOutlined /> },
   { key: "routing", label: "Маршрутизация", icon: <SwapOutlined /> },
   { key: "gateway", label: "Сеть и DNS", icon: <ApartmentOutlined /> },
   { key: "diagnostics", label: "Диагностика", icon: <ToolOutlined /> },
@@ -224,7 +223,7 @@ export default function App() {
         mode="inline"
         theme="dark"
         inlineCollapsed={collapsed}
-        selectedKeys={[tab]}
+        selectedKeys={[tab === "devices" ? "routing" : tab]}
         items={navItems}
         onClick={({ key }) => navigate(key)}
       />
@@ -343,7 +342,7 @@ export default function App() {
               </div>
             ) : tab === "settings" ? (
               <PanelSettings />
-            ) : tab === "routing" ? (
+            ) : (tab === "routing" || tab === "devices") ? (
               <Routing p={page} run={run} reload={reload} />
             ) : tab === "subscriptions" ? (
               <Subscriptions p={page} run={run} reload={reload} />
@@ -354,8 +353,7 @@ export default function App() {
                 navigate={navigate}
                 reload={reload}
               />
-            ) : tab === "devices" ? (
-              <Devices p={page} run={run} />
+
             ) : tab === "gateway" ? (
               <Gateway p={page} run={run} />
             ) : tab === "diagnostics" ? (
