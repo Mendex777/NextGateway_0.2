@@ -340,9 +340,3 @@ body {
 .accent-swatch { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; color: white; }
 .accent-custom { margin-top: 24px; }
 .log-container { --log-stamp: var(--ng-accent-text); --log-debug: var(--ng-accent-text); }
-
-html[data-scheme="zashboard"], html[data-scheme="zashboard"] body, html[data-scheme="zashboard"] #root { background: #1d232a; }
-html[data-scheme="zashboard"] .ant-table { background: #1d232a; }
-html[data-scheme="zashboard"] .ant-table-thead > tr > th { background: #191e24; }
-html[data-scheme="zashboard"] .ant-btn-primary, html[data-scheme="zashboard"] .ant-switch-checked { background: #605dff; }
-html[data-scheme="zashboard"] .ov-card { background: #1d232a; border-color: #313b47; }

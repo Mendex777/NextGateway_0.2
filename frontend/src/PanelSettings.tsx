@@ -1,13 +1,10 @@
-import { Button, Card, Select, ColorPicker, Space, Typography } from "antd";
+import { Button, Card, ColorPicker, Space, Typography } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import { defaultAccent, palettes, usePanelTheme } from "./PanelTheme";
 export default function PanelSettings() {
-  const { accent, setAccent, scheme, setScheme } = usePanelTheme();
+  const { accent, setAccent } = usePanelTheme();
   return <Card title="Настройки панели" className="panel-settings">
     <Typography.Title level={5}>Цветовая схема</Typography.Title>
-    <Select aria-label="Цветовая схема" style={{width: 240, marginBottom: 16}} value={scheme} onChange={setScheme} options={[{value:"standard",label:"NGPanel"},{value:"zashboard",label:"Zashboard — тёмная"}]} />
-    {scheme === "zashboard" && <Typography.Paragraph type="secondary">Цвета тёмной темы Zashboard: графитовый фон, холодный светлый текст и фиолетовый акцент. Настройка сохраняется в этом браузере.</Typography.Paragraph>}
-    {scheme === "standard" && <>
     <Typography.Paragraph type="secondary">Акцентный цвет кнопок, меню и графиков. Настройка сохраняется в этом браузере.</Typography.Paragraph>
     <Space wrap size={[12, 12]}>
       {palettes.map(({color,label}) => <Button key={color} aria-pressed={accent === color}
@@ -19,6 +16,5 @@ export default function PanelSettings() {
       <ColorPicker value={accent} disabledAlpha showText onChange={(color) => setAccent(color.toHexString())} />
       <Button type="text" disabled={accent === defaultAccent} onClick={() => setAccent(defaultAccent)}>По умолчанию</Button>
     </Space></div>
-    </>}
   </Card>;
 }
