@@ -1,0 +1,150 @@
+{
+  "format": "ngpanel-routing",
+  "version": 1,
+  "rules": [
+    {
+      "name": "2ip",
+      "kind": "domain",
+      "value": "domain:2ip.io",
+      "target": "proxy",
+      "disabled": true
+    },
+    {
+      "name": "youtube",
+      "kind": "domain",
+      "value": "geosite:youtube",
+      "target": "proxy"
+    },
+    {
+      "name": "telegram",
+      "kind": "domain",
+      "value": "geosite:telegram",
+      "target": "proxy"
+    },
+    {
+      "name": "telegram",
+      "kind": "ip",
+      "value": "geoip:telegram",
+      "target": "proxy"
+    },
+    {
+      "name": "meta",
+      "kind": "domain",
+      "value": "geosite:meta",
+      "target": "proxy"
+    },
+    {
+      "name": "facebook",
+      "kind": "domain",
+      "value": "geosite:facebook",
+      "target": "proxy"
+    },
+    {
+      "name": "facebook",
+      "kind": "ip",
+      "value": "geoip:facebook",
+      "target": "proxy"
+    },
+    {
+      "name": "instagram",
+      "kind": "domain",
+      "value": "geosite:instagram",
+      "target": "proxy"
+    },
+    {
+      "name": "whatsapp",
+      "kind": "domain",
+      "value": "geosite:whatsapp",
+      "target": "proxy"
+    },
+    {
+      "name": "category-ai-!cn",
+      "kind": "domain",
+      "value": "geosite:category-ai-!cn",
+      "target": "proxy"
+    },
+    {
+      "name": "discord",
+      "kind": "domain",
+      "value": "domain:dis.gd\ndomain:disboard.org\ndomain:discord-activities.com\ndomain:discord.center\ndomain:discord.co\ndomain:discord.com\ndomain:discord.design\ndomain:discord.dev\ndomain:discord.gg\ndomain:discord.gift\ndomain:discord.gifts\ndomain:discord.me\ndomain:discord.media\ndomain:discord.new\ndomain:discord.st\ndomain:discord.store\ndomain:discord.tools\ndomain:discordInvites.net\ndomain:discordactivities.com\ndomain:discordapp.com\ndomain:discordapp.io\ndomain:discordapp.net\ndomain:discordbee.com\ndomain:discordbotlist.com\ndomain:discordcdn.com\ndomain:discordexpert.com\ndomain:discordhome.com\ndomain:discordhub.com\ndomain:discordlist.me\ndomain:discordlist.space\ndomain:discordmerch.com\ndomain:discordpartygames.com\ndomain:discords.com\ndomain:discordsays.com\ndomain:discordservers.com\ndomain:discordstatus.com\ndomain:discordtop.com\ndomain:disforge.com\ndomain:dyno.gg\ndomain:findAdiscord.com\ndomain:googleapis.com\ndomain:mee6.xyz\ndomain:top.gg",
+      "target": "proxy"
+    },
+    {
+      "name": "discord",
+      "kind": "ip",
+      "value": "103.224.0.0/16\n104.154.0.0/15\n104.16.0.0/12\n108.136.0.0/14\n108.156.0.0/14\n108.177.0.0/17\n13.224.0.0/12\n13.248.0.0/14\n13.32.0.0/12\n138.128.136.0/21\n142.250.0.0/15\n143.204.0.0/16\n15.196.0.0/14\n15.204.0.0/16\n162.158.0.0/15\n162.210.192.0/21\n166.117.0.0/16\n170.178.160.0/19\n172.217.0.0/16\n172.241.208.0/21\n172.253.0.0/16\n172.64.0.0/13\n173.194.0.0/16\n173.208.64.0/18\n173.234.144.0/20\n18.128.0.0/9\n18.64.0.0/10\n185.107.56.0/24\n188.114.96.0/22\n192.157.48.0/20\n192.178.0.0/15\n199.115.112.0/21\n204.11.56.0/23\n207.244.64.0/18\n208.115.192.0/18\n208.91.196.0/23\n209.85.128.0/17\n212.32.224.0/19\n212.7.208.0/22\n212.92.104.0/21\n216.137.32.0/19\n216.245.192.0/19\n216.58.192.0/19\n23.227.32.0/19\n23.82.0.0/16\n3.128.0.0/9\n34.0.0.0/15\n34.128.0.0/10\n34.2.0.0/15\n34.64.0.0/10\n35.192.0.0/12\n35.208.0.0/12\n37.1.216.0/21\n37.48.64.0/18\n45.134.10.0/24\n5.200.14.128/25\n5.79.64.0/18\n51.81.0.0/16\n52.222.0.0/16\n52.84.0.0/14\n54.192.0.0/12\n54.224.0.0/11\n64.120.0.0/18\n64.233.160.0/19\n64.31.0.0/18\n65.8.0.0/14\n66.22.192.0/18\n69.162.64.0/18\n70.32.0.0/20\n74.125.0.0/16\n74.63.192.0/18\n75.2.0.0/17\n76.223.0.0/17\n77.247.183.144/28\n78.157.209.168/29\n8.0.0.0/13\n8.32.0.0/11\n81.17.16.0/20\n81.171.0.0/19\n82.192.64.0/19\n85.17.5.0/24\n94.229.72.112/28\n95.211.136.160/27\n99.83.128.0/17\n99.84.0.0/16\n99.86.0.0/16",
+      "target": "proxy"
+    },
+    {
+      "name": "google",
+      "kind": "domain",
+      "value": "geosite:google",
+      "target": "proxy"
+    },
+    {
+      "name": "google",
+      "kind": "ip",
+      "value": "geoip:google",
+      "target": "proxy"
+    },
+    {
+      "name": "github",
+      "kind": "domain",
+      "value": "geosite:github",
+      "target": "proxy"
+    },
+    {
+      "name": "tiktok",
+      "kind": "domain",
+      "value": "geosite:tiktok",
+      "target": "proxy"
+    },
+    {
+      "name": "netflix",
+      "kind": "domain",
+      "value": "geosite:netflix",
+      "target": "proxy"
+    },
+    {
+      "name": "netflix",
+      "kind": "ip",
+      "value": "geoip:netflix",
+      "target": "proxy"
+    },
+    {
+      "name": "onedrive",
+      "kind": "domain",
+      "value": "geosite:onedrive",
+      "target": "proxy"
+    },
+    {
+      "name": "category-porn",
+      "kind": "domain",
+      "value": "geosite:category-porn",
+      "target": "proxy"
+    },
+    {
+      "name": "steam",
+      "kind": "domain",
+      "value": "geosite:steam",
+      "target": "proxy",
+      "disabled": true
+    },
+    {
+      "name": "apple",
+      "kind": "domain",
+      "value": "geosite:apple",
+      "target": "proxy",
+      "disabled": true
+    },
+    {
+      "name": "microsoft",
+      "kind": "domain",
+      "value": "geosite:microsoft",
+      "target": "proxy",
+      "disabled": true
+    }
+  ],
+  "outgoings": [],
+  "default_route": "direct"
+}
