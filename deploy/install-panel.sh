@@ -218,8 +218,30 @@ Type=oneshot
 ExecStart=/usr/bin/python3 /opt/ngpanel/update-panel.py
 TimeoutStartSec=300
 EOF
+cat > /etc/systemd/system/ngpanel-connections.service <<'EOF'
+[Unit]
+Description=NGPanel bounded Xray connection journal
+After=systemd-journald.service
+[Service]
+Group=ngpanel
+RuntimeDirectory=ngpanel-connections
+RuntimeDirectoryMode=0750
+ExecStart=/opt/ngpanel/ngpanel --collect-connections
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/ngpanel-connections
+CapabilityBoundingSet=CAP_CHOWN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
-systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path ngpanel-update.path
+systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path ngpanel-update.path ngpanel-connections.service
 systemctl restart ngpanel
 
 echo "[4/5] Preparing Xray, geo databases and gateway"

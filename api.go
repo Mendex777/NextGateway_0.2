@@ -33,6 +33,10 @@ func newRouter() http.Handler {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, pageData(c.Request))
 	})
+	router.GET("/api/connections", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(200, connectionSnapshot())
+	})
 	router.GET("/api/dashboard", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, hostDashboard())

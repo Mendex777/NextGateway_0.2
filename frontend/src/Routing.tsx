@@ -1,4 +1,5 @@
 import { Devices } from "./Pages";
+import Connections from "./Connections";
 import RoutingTransfer from "./RoutingTransfer";
 import { FlagText } from "./FlagText";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -544,7 +545,7 @@ export default function Routing({
   );
   return (
     <>
-      <Card>
+      <Card className={tab === "connections" ? "connections-card" : undefined}>
         <Tabs
           activeKey={tab}
           onChange={setTab}
@@ -572,6 +573,11 @@ export default function Routing({
               label: "Тест маршрута",
               icon: <AimOutlined />,
               children: test,
+            },
+            {
+              key: "connections",
+              label: "Соединения",
+              children: <Connections active={tab === "connections"} />,
             },
             {
               key: "geo",

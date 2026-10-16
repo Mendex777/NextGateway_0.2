@@ -69,7 +69,8 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(settings['custom_setting'],'keep');self.assertEqual(settings['selected_node'],'42')
             self.assertEqual(json.loads(settings['gateway_network']),network)
             self.assertEqual(settings['gateway_enabled'],'0' if existing else '1')
-            if not existing:self.assertEqual(settings['dns_direct'],'192.168.50.2')
+            # Empty bootstrap DNS inherits the VM resolver instead of pinning the detected router.
+            if not existing:self.assertEqual(settings['dns_direct'],'')
             self.assertEqual(len(posts),0 if existing else 1)
             if existing:self.assertEqual(path('/etc/ngpanel/config.json').read_text(),'keep applied config')
             if broken:self.assertTrue(any(a[-1].endswith('install-xray.py') for a in calls));self.assertTrue(any(a[-1].endswith('update-geodata.py') for a in calls))

@@ -355,3 +355,23 @@ body {
 @media (max-width: 560px) { .base-theme-options { grid-template-columns: 1fr; } }
 
 .sidebar-rail > .ant-layout-sider { color: var(--ng-text, #fafafa); }
+
+.connection-caption { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; color: var(--ng-muted); font-size: 12px; }
+.connection-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.connection-filters { margin-bottom: 10px; }
+.connections-table .ant-table { font-size: 12px; }
+.connections-table .ant-table-thead > tr > th { padding: 7px 8px !important; white-space: nowrap; }
+.connections-table .ant-table-tbody > tr > td { padding: 5px 8px !important; line-height: 17px; }
+.connection-secondary { color: var(--ng-muted); font-size: 11px; margin-left: 6px; }
+.connection-destination { min-width: 0; }
+.connection-destination .connection-secondary { display: block; margin-left: 0; font-size: 10px; line-height: 13px; }
+.connection-host { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 250px; }
+.connection-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.connection-protocol { color: var(--ng-muted); font-size: 10px; }
+.connections-table .ant-pagination { margin: 10px 0 0 !important; }
+@media (max-width: 560px) { .connection-filters { display: flex; } .connection-filters .ant-space-item { max-width: 100%; } }
+
+.connections-card > .ant-card-body { padding: 14px 16px; }
+.connections-card .ant-tabs-nav { margin-bottom: 12px; }
+
+.connection-views { margin-bottom: 8px; max-width: 100%; overflow-x: auto; }

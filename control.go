@@ -293,7 +293,7 @@ func buildConfig() (map[string]any, error) {
 		if r.Kind == "ip" {
 			field = "ip"
 		}
-		entry := map[string]any{"type": "field", "outboundTag": targetTag(r.Target)}
+		entry := map[string]any{"type": "field", "outboundTag": targetTag(r.Target), "ruleTag": connectionRuleTag(r)}
 		if r.Kind != "device" {
 			entry[field] = strings.FieldsFunc(r.Value, func(c rune) bool { return c == '\n' || c == ',' })
 		}
@@ -302,8 +302,18 @@ func buildConfig() (map[string]any, error) {
 		}
 		routing = append(routing, entry)
 	}
-	routing = append(routing, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": targetTag(mode)})
-	config := map[string]any{"log": map[string]any{"loglevel": "warning"}, "dns": map[string]any{"queryStrategy": "UseIPv4", "disableFallbackIfMatch": true, "servers": servers}, "outbounds": out, "routing": map[string]any{"domainStrategy": "AsIs", "rules": routing}, "inbounds": []any{
+	for i, raw := range routing {
+		entry := raw.(map[string]any)
+		if _, tagged := entry["ruleTag"]; !tagged {
+			label := "Политика DNS"
+			if i == 3 {
+				label = "Локальная сеть"
+			}
+			entry["ruleTag"] = connectionSystemRuleTag(label)
+		}
+	}
+	routing = append(routing, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": targetTag(mode), "ruleTag": connectionSystemRuleTag("Маршрут по умолчанию")})
+	config := map[string]any{"log": map[string]any{"loglevel": "info"}, "dns": map[string]any{"queryStrategy": "UseIPv4", "disableFallbackIfMatch": true, "servers": servers}, "outbounds": out, "routing": map[string]any{"domainStrategy": "AsIs", "rules": routing}, "inbounds": []any{
 		map[string]any{"tag": "tproxy-in", "listen": "0.0.0.0", "port": 7895, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "followRedirect": true}, "streamSettings": map[string]any{"sockopt": map[string]any{"tproxy": "tproxy"}}, "sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true}},
 		map[string]any{"tag": "dns-in", "listen": "0.0.0.0", "port": 1053, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp", "address": dns, "port": 53}},
 		map[string]any{"tag": "test-socks", "listen": "127.0.0.1", "port": 1080, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": true}}}}

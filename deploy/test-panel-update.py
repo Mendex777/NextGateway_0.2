@@ -18,7 +18,7 @@ class UpdateTests(unittest.TestCase):
         self.root=pathlib.Path(self.temp.name);self.app=self.root/'app';self.app.mkdir();self.updates=self.root/'updates';self.updates.mkdir();self.db=self.root/'panel.db'
         with sqlite3.connect(self.db) as db:db.execute('CREATE TABLE example(value TEXT)');db.execute("INSERT INTO example VALUES('private subscription')")
         for n in u.FILES:(self.app/n).write_bytes(b'old '+n.encode())
-        self.patches=[patch.object(u,n,v) for n,v in {'APP':self.app,'DB':self.db,'UPDATES':self.updates,'PREVIOUS':self.updates/'previous'}.items()]
+        self.patches=[patch.object(u,n,v) for n,v in {'APP':self.app,'DB':self.db,'UPDATES':self.updates,'PREVIOUS':self.updates/'previous','CONNECTIONS_UNIT':self.root/'collector.service'}.items()]
         for p in self.patches:p.start();self.addCleanup(p.stop)
     def test_checksum_failure_keeps_running_panel(self):
         with patch.object(u,'download',return_value=b'corrupt'),patch.object(u,'report'),patch.object(u,'run') as run:
@@ -29,6 +29,14 @@ class UpdateTests(unittest.TestCase):
         with patch.object(u,'run'):
             with self.assertRaises(ValueError):u.unpack(archive(extra={'../escape':b'bad'}),self.app/'stage','v0.2.1')
         self.assertFalse((self.root/'escape').exists())
+    def test_collector_upgrade_and_legacy_rollback(self):
+        with patch.object(u,'run') as run,patch.object(u,'CONNECTIONS_UNIT',self.root/'collector.service'):
+            u.sync_connections('v0.3.39')
+            run.assert_called_once_with(['/usr/bin/python3',str(self.app/'control.py'),'connections-install'])
+            run.reset_mock();u.sync_connections('v0.3.38');run.assert_not_called()
+            (self.root/'collector.service').write_text('installed')
+            u.sync_connections('v0.3.38')
+            run.assert_called_once_with(['systemctl','disable','--now','ngpanel-connections.service'])
     def test_failed_start_restores_files_and_database(self):
         data=archive();calls=[]
         def run(args,**kw):

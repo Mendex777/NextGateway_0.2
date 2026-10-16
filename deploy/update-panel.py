@@ -11,6 +11,7 @@ REQUEST=ROOT/'jobs/panel-update.request'
 REPO='Mendex777/NextGateway_0.2'
 FILES=('ngpanel','web.html','ui.js','control.py','install-xray.py','index-geodata.py','update-geodata.py','update-panel.py')
 ASSET='ngpanel-linux-amd64.tar.gz'
+CONNECTIONS_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-connections.service')
 
 def run(args,**kw):return subprocess.run(args,check=True,timeout=kw.pop('timeout',30),capture_output=True,text=True,**kw)
 def atomic(path,data,mode=0o644):
@@ -67,7 +68,14 @@ def snapshot(destination):
     with sqlite3.connect('file:'+str(DB)+'?mode=ro',uri=True) as src,sqlite3.connect(destination/'panel.db') as dst:src.backup(dst)
     (destination/'panel.db').chmod(0o600)
 
+def sync_connections(tag):
+    if version(tag)>=(0,3,39):
+        run(['/usr/bin/python3',str(APP/'control.py'),'connections-install'])
+    elif CONNECTIONS_UNIT.exists():
+        run(['systemctl','disable','--now','ngpanel-connections.service'])
+
 def replace_files(source):
+    if CONNECTIONS_UNIT.exists():run(['systemctl','stop','ngpanel-connections.service'])
     for name in FILES:
         tmp=APP/(name+'.update-new');shutil.copy2(source/name,tmp);os.chown(tmp,0,0);os.replace(tmp,APP/name)
 
@@ -103,10 +111,10 @@ def install_release(tag,asset,digest):
         snapshot(saved)
         old=run([str(APP/'ngpanel'),'--version']).stdout.split()[1]
         try:
-            replace_files(stage);run(['systemctl','start','ngpanel'])
+            replace_files(stage);sync_connections(tag);run(['systemctl','start','ngpanel'])
             if not healthy(tag):raise ValueError('Новая панель не прошла проверку запуска')
         except Exception:
-            run(['systemctl','stop','ngpanel']);replace_files(saved);restore_db(saved);run(['systemctl','start','ngpanel'])
+            run(['systemctl','stop','ngpanel']);replace_files(saved);restore_db(saved);sync_connections(old);run(['systemctl','start','ngpanel'])
             if not healthy(old):raise ValueError('Ошибка отката; резервная копия сохранена в '+str(saved))
             raise ValueError('Обновление отменено; предыдущая панель и база восстановлены')
         if PREVIOUS.exists():shutil.rmtree(PREVIOUS)
@@ -119,13 +127,14 @@ def install_release(tag,asset,digest):
 def rollback():
     if not PREVIOUS.exists():raise ValueError('Нет предыдущей версии')
     tag=run([str(PREVIOUS/'ngpanel'),'--version']).stdout.split()[1]
+    old=installed()
     saved=UPDATES/('before-rollback-'+str(time.time_ns()))
     run(['systemctl','stop','ngpanel']);snapshot(saved)
     try:
-        replace_files(PREVIOUS);restore_db(PREVIOUS);run(['systemctl','start','ngpanel'])
+        replace_files(PREVIOUS);restore_db(PREVIOUS);sync_connections(tag);run(['systemctl','start','ngpanel'])
         if not healthy(tag):raise ValueError('Не удалось запустить предыдущую панель')
     except Exception:
-        run(['systemctl','stop','ngpanel']);replace_files(saved);restore_db(saved);run(['systemctl','start','ngpanel']);raise
+        run(['systemctl','stop','ngpanel']);replace_files(saved);restore_db(saved);sync_connections(old);run(['systemctl','start','ngpanel']);raise
     report('ok','Панель и база возвращены к '+tag,Available=True)
 
 def main():

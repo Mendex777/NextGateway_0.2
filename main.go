@@ -634,6 +634,12 @@ func pageData(r *http.Request) Page {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--collect-connections" {
+		if e := collectConnections(); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Printf("NGPanel %s %s\n", panelVersion, panelCommit)
 		return
@@ -672,6 +678,7 @@ func main() {
 	log.Printf("NGPanel listening on %s", addr)
 	startDashboardSampler()
 	if os.Getenv("NG_REVIEW") != "1" {
+		go ensureConnectionCollector()
 		go subscriptionWorker()
 		go groupWorker()
 	}

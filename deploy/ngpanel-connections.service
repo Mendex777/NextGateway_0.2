@@ -1,0 +1,20 @@
+[Unit]
+Description=NGPanel bounded Xray connection journal
+After=systemd-journald.service
+[Service]
+Group=ngpanel
+RuntimeDirectory=ngpanel-connections
+RuntimeDirectoryMode=0750
+ExecStart=/opt/ngpanel/ngpanel --collect-connections
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/ngpanel-connections
+CapabilityBoundingSet=CAP_CHOWN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+[Install]
+WantedBy=multi-user.target

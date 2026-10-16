@@ -2,10 +2,10 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { App as AntApp, ConfigProvider, theme } from "antd";
 import ruRU from "antd/locale/ru_RU";
 
-export const defaultAccent = "#8b5cf6";
+export const defaultAccent = "#615fff";
 export const palettes = [
   { color: "#c65bd6", label: "Фиолетово-розовый" },
-  { color: "#8b5cf6", label: "Фиолетовый" },
+  { color: "#615fff", label: "Фиолетовый" },
   { color: "#1677ff", label: "Синий" },
   { color: "#22b89a", label: "Бирюзовый" },
   { color: "#e7a339", label: "Янтарный" },
@@ -48,7 +48,7 @@ export default function PanelTheme({ children }: { children: ReactNode }) {
   const palette = baseThemes.find((t) => t.id === baseTheme)!;
   const light = baseTheme === "light";
   const [accent, updateAccent] = useState(() => {
-    try { const saved = localStorage.getItem(key); return saved && valid(saved) ? saved : defaultAccent; }
+    try { const saved = localStorage.getItem(key); return saved && valid(saved) && saved.toLowerCase() !== "#8b5cf6" ? saved : defaultAccent; }
     catch { return defaultAccent; }
   });
   const setAccent = (color: string) => {

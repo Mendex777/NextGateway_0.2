@@ -35,6 +35,20 @@ def atomic(path, data, mode=0o644, group=None):
         os.chown(temporary, 0, group)
     os.replace(temporary, path)
 
+CONNECTIONS_UNIT = pathlib.Path('/etc/systemd/system/ngpanel-connections.service')
+CONNECTIONS_SERVICE = '[Unit]\nDescription=NGPanel bounded Xray connection journal\nAfter=systemd-journald.service\n[Service]\nGroup=ngpanel\nRuntimeDirectory=ngpanel-connections\nRuntimeDirectoryMode=0750\nExecStart=/opt/ngpanel/ngpanel --collect-connections\nRestart=on-failure\nRestartSec=3\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nReadWritePaths=/run/ngpanel-connections\nCapabilityBoundingSet=CAP_CHOWN\nRestrictAddressFamilies=AF_UNIX AF_NETLINK\n[Install]\nWantedBy=multi-user.target\n'
+
+def install_connections():
+    if os.geteuid() != 0: raise ValueError('Collector setup requires root')
+    if CONNECTIONS_UNIT.is_symlink(): raise ValueError('Collector unit is masked or managed by an administrator')
+    if not CONNECTIONS_UNIT.exists() or CONNECTIONS_UNIT.read_text() != CONNECTIONS_SERVICE:
+        atomic(CONNECTIONS_UNIT, CONNECTIONS_SERVICE)
+        run(['systemctl','daemon-reload'])
+    run(['systemctl','enable','ngpanel-connections.service'])
+    run(['systemctl','restart','ngpanel-connections.service'])
+    return 'Сборщик соединений установлен и запущен'
+
+
 def load(path, default=None):
     if not path.exists():
         return {} if default is None else default
@@ -46,7 +60,7 @@ def active():
 def validate(config):
     if not isinstance(config, dict) or not {'log','dns','inbounds','outbounds','routing'}<=set(config) or set(config)-{'log','dns','inbounds','outbounds','routing','observatory','api'}:
         raise ValueError('Unexpected configuration schema')
-    if config['log'] != {'loglevel':'warning'}:
+    if config['log'] not in ({'loglevel':'warning'}, {'loglevel':'info'}):
         raise ValueError('Only journal logging is allowed')
     expected = {'tproxy-in':('0.0.0.0',7895,'dokodemo-door'), 'dns-in':('0.0.0.0',1053,'dokodemo-door'), 'test-socks':('127.0.0.1',1080,'socks')}
     if len(config['inbounds']) != 3:
@@ -390,6 +404,8 @@ if __name__ == '__main__':
             with open('/run/ngpanel-control.lock','w') as lock:
                 fcntl.flock(lock,fcntl.LOCK_EX)
                 network_revert()
+        elif sys.argv[1]=='connections-install':
+            install_connections()
         elif sys.argv[1]=='gateway-restore':
             restore_gateway_on_boot()
         else: raise ValueError('Unknown fixed operation')
@@ -406,11 +422,12 @@ if __name__ == '__main__':
                 if not stat.S_ISREG(info.st_mode) or info.st_uid!=pwd.getpwnam('ngpanel').pw_uid or info.st_size>2*1024*1024: raise ValueError('Invalid request')
                 job=json.load(file)
             action=job.get('Action','')
-            if action not in ('check','apply','start','restart','stop','rollback','network','network-confirm','logs','geodata','dependencies'): raise ValueError('Unknown action')
+            if action not in ('check','apply','start','restart','stop','rollback','network','network-confirm','logs','geodata','dependencies','connections'): raise ValueError('Unknown action')
             runtime.update(State='running',Action=action,Message='Выполняется задание')
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             message=''
             if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''),job.get('network'),job.get('groups',[]))
+            elif action=='connections': message=install_connections()
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)
                 run(['apt-get','install','-y','--no-install-recommends','nftables','iproute2','curl','ca-certificates','avahi-utils','ieee-data'],timeout=150)
