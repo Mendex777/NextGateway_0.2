@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Host counters are sampled once per second, shared by all browser sessions.
+// Host counters are sampled every two seconds, shared by all browser sessions.
 type dashboardMetrics struct {
 	Time          int64   `json:"time"`
 	CPU           float64 `json:"cpu"`

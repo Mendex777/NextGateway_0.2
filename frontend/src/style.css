@@ -3,12 +3,11 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
-  background: #1a1b1f;
+  background: var(--ng-background, #0a0a0a);
 }
 body {
   font-family:
-    "NGFlagEmoji", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+    "NGFlagEmoji", "Geist Variable", sans-serif;
 }
 .ng-layout {
   min-height: 100vh;
@@ -42,7 +41,7 @@ body {
   gap: 8px;
   height: 58px;
   padding: 0 16px 0 24px;
-  border-bottom: 1px solid #363944;
+  border-bottom: 1px solid var(--ng-border, #303030);
 }
 .sider-brand .ant-typography {
   font-size: 18px;
@@ -52,21 +51,10 @@ body {
   justify-content: center;
   padding: 0;
 }
-.sider-search {
-  padding: 8px;
-}
-.sider-search kbd {
-  font-size: 9px;
-  white-space: nowrap;
-  padding: 1px 3px;
-  background: #363b44;
-  border: 1px solid #525762;
-  border-radius: 3px;
-}
 .sider-footer {
   margin-top: auto;
   padding: 16px 24px;
-  border-top: 1px solid #363944;
+  border-top: 1px solid var(--ng-border, #303030);
   font-size: 12px;
 }
 .ant-layout-content {
@@ -80,10 +68,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 20px;
+}
+.config-card .ant-card-body {
+  padding: 16px 20px;
+}
+.config-row > .ant-btn {
+  flex: none;
 }
 .config-row .ant-alert {
-  max-width: 460px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
 }
 .operation-alert {
   margin-bottom: 12px;
@@ -109,13 +105,13 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #a1a4ad;
+  color: var(--ng-muted, #a1a4ad);
   white-space: nowrap;
 }
 .drag-grip {
   touch-action: none;
   cursor: grab;
-  color: #6e7480;
+  color: var(--ng-faint, #6e7480);
   padding: 0;
   border: 0;
   background: transparent;
@@ -129,7 +125,7 @@ body {
   max-width: 300px;
 }
 .field-prefix {
-  color: #8b909a;
+  color: var(--ng-faint, #8b909a);
   font-size: 9px;
   margin-right: 5px;
   text-transform: uppercase;
@@ -171,7 +167,7 @@ body {
 }
 .node-info {
   font-size: 11px;
-  color: #9a9ea8;
+  color: var(--ng-muted, #9a9ea8);
 }
 .source-meta {
   display: flex;
@@ -217,7 +213,7 @@ body {
 }
 .nav-drawer .ant-drawer-body {
   padding: 0;
-  background: #15161a;
+  background: var(--ng-sidebar, #171717);
   display: flex;
   flex-direction: column;
 }
@@ -260,12 +256,12 @@ body {
     height: 54px;
     line-height: normal;
     padding: 0 16px;
-    background: #15161a;
+    background: var(--ng-sidebar, #171717);
   }
   .config-row {
     align-items: flex-start;
     flex-direction: column-reverse;
-    gap: 16px;
+    gap: 10px;
   }
   .config-row .ant-alert {
     max-width: none;
@@ -328,7 +324,7 @@ body {
   line-height: 18px;
 }
 .sider-footer a {
-  color: #9a9ea8;
+  color: var(--ng-muted, #9a9ea8);
 }
 .group-picker.ant-transfer {
   max-width: 100%;
@@ -340,3 +336,22 @@ body {
 .accent-swatch { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; color: white; }
 .accent-custom { margin-top: 24px; }
 .log-container { --log-stamp: var(--ng-accent-text); --log-debug: var(--ng-accent-text); }
+
+/* Shared action geometry, including icon-only table and toolbar controls. */
+.ng-icon { display: inline-block; flex-shrink: 0; vertical-align: -0.125em; }
+.ng-icon-spin { animation: ng-icon-spin 1s linear infinite; }
+@keyframes ng-icon-spin { to { transform: rotate(360deg); } }
+.ant-btn.ant-btn-icon-only { border-radius: 6px; }
+.ant-btn-sm.ant-btn-icon-only { width: 28px; height: 28px; }
+.config-row .ant-alert-success { color: var(--ng-success, #34d399); }
+.config-row .ant-alert-success .ant-alert-title { color: inherit; }
+
+.base-theme-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.base-theme-choice.ant-btn { height: auto; min-height: 64px; justify-content: flex-start; padding: 10px 12px; white-space: normal; text-align: left; }
+.base-theme-choice[aria-pressed="true"] { border-color: var(--ng-accent); }
+.base-theme-preview { display: flex; width: 64px; height: 40px; gap: 5px; padding: 5px; border: 1px solid; border-radius: 5px; flex: none; }
+.base-theme-preview > span:first-child { width: 12px; border-radius: 2px; }
+.base-theme-preview > span:last-child { flex: 1; border: 1px solid; border-radius: 2px; }
+@media (max-width: 560px) { .base-theme-options { grid-template-columns: 1fr; } }
+
+.sidebar-rail > .ant-layout-sider { color: var(--ng-text, #fafafa); }

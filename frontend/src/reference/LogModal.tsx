@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Grid, Alert } from 'antd';
 import { Button, Checkbox, Form, Modal, Select, Space } from 'antd';
-import { DownloadOutlined, SyncOutlined } from '@ant-design/icons';
+import { DownloadOutlined, SyncOutlined } from '../icons';
 
 import { getJSON, action } from '../api';
 const activateOnKey = (fn: () => void) => (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };

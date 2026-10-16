@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Alert, App, Button, Checkbox, Form, Input, Modal, Select, Space, Table, Upload, Typography } from "antd";
-import { DownloadOutlined, UploadOutlined, GithubOutlined } from "@ant-design/icons";
+import { DownloadOutlined, UploadOutlined, GithubOutlined } from "./icons";
 import type { Page } from "./types";
 import { Target } from "./common";
 type Template = {format:string;version:number;default_route:string;outgoings:{key:string;label:string;kind:string}[];rules:{name:string;kind:string;value:string;target:string;source?:string;disabled?:boolean}[]};

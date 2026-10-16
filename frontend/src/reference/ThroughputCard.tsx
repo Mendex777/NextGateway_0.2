@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "./utils";
 import { Card, theme } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, ArrowUpOutlined } from "../icons";
 
 import { SizeFormatter } from "./utils";
 import Sparkline from "./Sparkline";

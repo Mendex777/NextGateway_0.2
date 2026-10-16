@@ -11,7 +11,7 @@ import {
   Tag,
 } from "antd";
 import { useState } from "react";
-import { MoreOutlined, LoadingOutlined, CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import { MoreOutlined, LoadingOutlined, CheckCircleFilled, CloseCircleFilled } from "./icons";
 import type { Page, Values, Node, Probe } from "./types";
 export type Run = (name: string, values?: Values) => Promise<void>;
 export const date = (value: string) =>

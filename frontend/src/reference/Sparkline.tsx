@@ -25,8 +25,8 @@ const DEFAULT_MIN_COLOR = "#52c41a";
 const DEFAULT_MAX_COLOR = "#fa541c";
 const GRID_COLOR = "rgba(128, 128, 140, 0.35)";
 const AXIS_FONT =
-  '10px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const LABEL_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  '10px "Geist Variable", sans-serif';
+const LABEL_FONT = '"Geist Variable", sans-serif';
 
 interface SparklineProps {
   data: number[];
@@ -455,6 +455,21 @@ export default function Sparkline(props: SparklineProps) {
         }
       }
 
+      for (let idx = 1; idx < u.data.length; idx++) {
+        const x = u.scales.x.max;
+        if (x == null || !u.data[0].length) continue;
+        const left = Math.max(0, Math.min(Math.floor(x), u.data[0].length - 1));
+        const rightIndex = Math.min(left + 1, u.data[0].length - 1);
+        const a = Number(u.data[idx][left]), b = Number(u.data[idx][rightIndex]);
+        const value = a + (b - a) * Math.min(1, Math.max(0, x - left));
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(u.valToPos(x, "x", true) - 2 * dpr, u.valToPos(value, "y", true), 2.5 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = seriesColor(idx);
+        ctx.fill();
+        ctx.restore();
+      }
+
       const ex = v.extremaPoints;
       if (p.extrema?.show && ex) {
         const ringColor = cssVar(u.root, "--ant-color-bg-elevated", "#ffffff");
@@ -622,15 +637,11 @@ export default function Sparkline(props: SparklineProps) {
   }, [hasSeries2, hasSeries3, showAxes, showTooltip, showMarker, height]);
 
   useEffect(() => {
-    plotRef.current?.setData(
-      (() => {
-        const xs = points.map((_, i) => i);
-        const s: number[][] = [points.map((p) => p.value)];
-        if (hasSeries2) s.push(points.map((p) => p.value2));
-        if (hasSeries3) s.push(points.map((p) => p.value3));
-        return [xs, ...s] as uPlot.AlignedData;
-      })(),
-    );
+    const xs = points.map((_, i) => i);
+    const series = [xs, points.map((p) => p.value)];
+    if (hasSeries2) series.push(points.map((p) => p.value2));
+    if (hasSeries3) series.push(points.map((p) => p.value3));
+    plotRef.current?.setData(series as uPlot.AlignedData);
   }, [points, hasSeries2, hasSeries3, valueMin, valueMax]);
 
   useEffect(() => {
@@ -643,7 +654,7 @@ export default function Sparkline(props: SparklineProps) {
     const moRoot = new MutationObserver(redraw);
     moRoot.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "style"],
     });
     return () => {
       moBody.disconnect();

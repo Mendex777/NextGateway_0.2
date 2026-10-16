@@ -26,7 +26,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   UploadOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import { action, getJSON } from "./api";
 import {
   date,

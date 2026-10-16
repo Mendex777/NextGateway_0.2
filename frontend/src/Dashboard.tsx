@@ -35,7 +35,7 @@ import {
   SwapOutlined,
   ReloadOutlined,
   UploadOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import { action, getJSON } from "./api";
 import { Overview } from "./Pages";
 import type { Page } from "./types";
@@ -184,7 +184,10 @@ export default function Dashboard({
     [restoring, setRestoring] = useState(false);
   useEffect(() => {
     let stopped = false;
+    let loading = false;
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const history = await getJSON<Metrics[]>("/api/dashboard/history");
         if (!stopped) {
@@ -193,7 +196,7 @@ export default function Dashboard({
         }
       } catch {
         if (!stopped) setFailure("Не удалось получить показатели ВМ");
-      }
+      } finally { loading = false; }
     };
     void load();
     const timer = setInterval(() => {
@@ -520,7 +523,7 @@ export default function Dashboard({
           <Tooltip title="Скачать бекап">
             <Button
               type="primary"
-              shape="circle"
+              shape="default"
               icon={<DownloadOutlined />}
               aria-label="Скачать бекап"
               href="/backup"
@@ -541,7 +544,7 @@ export default function Dashboard({
           >
             <Button
               type="primary"
-              shape="circle"
+              shape="default"
               loading={restoring}
               icon={<UploadOutlined />}
               aria-label="Загрузить бекап"

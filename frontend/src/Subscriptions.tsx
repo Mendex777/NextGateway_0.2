@@ -23,6 +23,7 @@ import {
 } from "antd";
 import {
   CloudDownloadOutlined,
+  CopyOutlined,
   CheckOutlined,
   EditOutlined,
   MoreOutlined,
@@ -31,7 +32,7 @@ import {
   ReloadOutlined,
   RightOutlined,
   ThunderboltOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import "./subscriptions.css";
 import { getJSON } from "./api";
 import {
@@ -229,7 +230,7 @@ export default function Subscriptions({
                   ? doRun(g ? "group-select" : "select-node", g ? { group_id: g.id, node_id: n.ID } : { id: n.ID })
                   : confirm("Удалить подключение «" + n.Name + "»?", "node-delete", { id: n.ID }),
               }}>
-                <Button size="small" shape="circle" aria-label={"Действия " + n.Name} icon={<MoreOutlined />} />
+                <Button size="small" shape="default" aria-label={"Действия " + n.Name} icon={<MoreOutlined />} />
               </Dropdown>
             </div>
           ),
@@ -259,12 +260,12 @@ export default function Subscriptions({
         {
           title: "Адрес",
           width: 200,
-          render: (_, n) => <Typography.Text className="outbound-address" copyable={{ text: n.Host + ":" + n.Port }}>{n.Host}:{n.Port}</Typography.Text>,
+          render: (_, n) => <Typography.Text className="outbound-address" copyable={{ icon: [<CopyOutlined />, <CheckOutlined />], text: n.Host + ":" + n.Port }}>{n.Host}:{n.Port}</Typography.Text>,
         },
         {
           title: "Выход",
           width: 155,
-          render: (_, n) => n.Probe?.ExitIP ? <Typography.Text copyable={{ text: n.Probe.ExitIP }}>{n.Probe.ExitIP}</Typography.Text> : "—",
+          render: (_, n) => n.Probe?.ExitIP ? <Typography.Text copyable={{ icon: [<CopyOutlined />, <CheckOutlined />], text: n.Probe.ExitIP }}>{n.Probe.ExitIP}</Typography.Text> : "—",
         },
         {
           title: "Страна",
@@ -738,7 +739,7 @@ function TooltipButton(props: {
     <Tooltip title={props.title}>
       <Button
         size="small"
-        shape="circle"
+        shape="default"
         aria-label={props.title}
         icon={props.icon}
         disabled={props.disabled}

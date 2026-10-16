@@ -32,7 +32,7 @@ import {
   PlusOutlined,
   SwapOutlined,
   TeamOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import {
   DndContext,
   KeyboardSensor,
@@ -171,7 +171,7 @@ export default function Routing({
           <Tooltip title="Изменить">
             <Button
               aria-label={"Изменить правило " + r.Name}
-              shape="circle"
+              shape="default"
               size="small"
               icon={<EditOutlined />}
               onClick={() => setEditing(r)}
@@ -198,7 +198,7 @@ export default function Routing({
             }}
           >
             <Button
-              shape="circle"
+              shape="default"
               size="small"
               aria-label={"Действия с правилом " + r.Name}
               icon={<MoreOutlined />}
@@ -260,7 +260,7 @@ export default function Routing({
           icon={<PlusOutlined />}
           onClick={() => setEditing(null)}
         >
-          Маршрутизация
+          Добавить правило
         </Button>
       </Space>
       {selectedRules.length > 0 && <Space wrap className="section-gap" style={{marginBottom: 12}}>

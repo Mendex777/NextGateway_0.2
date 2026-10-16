@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Drawer,
-  Input,
   Layout,
   Menu,
   Space,
@@ -23,12 +22,12 @@ import {
   SettingOutlined,
   PushpinFilled,
   PushpinOutlined,
-  SearchOutlined,
   MenuOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import { action, getJSON, getPage } from "./api";
 import type { Page, Values } from "./types";
 import PanelSettings from "./PanelSettings";
+import { usePanelTheme } from "./PanelTheme";
 import Routing from "./Routing";
 import Subscriptions from "./Subscriptions";
 import Dashboard from "./Dashboard";
@@ -56,6 +55,7 @@ function stored(key: string, fallback: boolean) {
 }
 export default function App() {
   const { message } = AntApp.useApp();
+  const { baseTheme } = usePanelTheme();
   const [tab, setTab] = useState(
     new URLSearchParams(location.search).get("tab") || "status",
   );
@@ -74,10 +74,8 @@ export default function App() {
       stored("ngpanel-sidebar-pinned", true),
     ),
     [hover, setHover] = useState(false),
-    [drawer, setDrawer] = useState(false),
-    [search, setSearch] = useState("");
-  const searchRef = useRef<React.ComponentRef<typeof Input>>(null),
-    currentTab = useRef(tab);
+    [drawer, setDrawer] = useState(false);
+  const currentTab = useRef(tab);
   currentTab.current = tab;
   const reload = useCallback(async (query: Values = {}) => {
     const requested = currentTab.current;
@@ -113,12 +111,6 @@ export default function App() {
   }, []);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPinned(true);
-        setDrawer(window.innerWidth < 768);
-        setTimeout(() => searchRef.current?.focus(), 0);
-      }
       if (e.key === "Escape") setDrawer(false);
     };
     window.addEventListener("keydown", listener);
@@ -159,7 +151,6 @@ export default function App() {
     history.pushState(null, "", "/?tab=" + next);
     setTab(next);
     setDrawer(false);
-    setSearch("");
   };
   const run = async (name: string, values: Values = {}) => {
     setWorking(true);
@@ -186,9 +177,6 @@ export default function App() {
   const safeRun = (name: string, values: Values = {}) => {
     void run(name, values).catch(() => {});
   };
-  const navItems = navigation.filter((n) =>
-    n.label.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-  );
   const sidebar = (collapsed: boolean) => (
     <>
       <div className="sider-brand">
@@ -206,25 +194,12 @@ export default function App() {
           />
         </Tooltip>
       </div>
-      {!collapsed && (
-        <div className="sider-search">
-          <Input
-            ref={searchRef}
-            size="small"
-            prefix={<SearchOutlined />}
-            placeholder="Поиск…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            suffix={<kbd>Ctrl K</kbd>}
-          />
-        </div>
-      )}
       <Menu
         mode="inline"
-        theme="dark"
+        theme={baseTheme === "light" ? "light" : "dark"}
         inlineCollapsed={collapsed}
         selectedKeys={[tab === "devices" ? "routing" : tab]}
-        items={navItems}
+        items={navigation}
         onClick={({ key }) => navigate(key)}
       />
       <div className="sider-footer">
