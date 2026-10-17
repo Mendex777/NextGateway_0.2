@@ -12,6 +12,8 @@ REPO='Mendex777/NextGateway_0.2'
 FILES=('ngpanel','web.html','ui.js','control.py','install-xray.py','index-geodata.py','update-geodata.py','update-panel.py')
 ASSET='ngpanel-linux-amd64.tar.gz'
 CONNECTIONS_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-connections.service')
+HEALTH_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-health.service')
+TRAFFIC_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-traffic.service')
 
 def run(args,**kw):return subprocess.run(args,check=True,timeout=kw.pop('timeout',30),capture_output=True,text=True,**kw)
 def atomic(path,data,mode=0o644):
@@ -69,12 +71,18 @@ def snapshot(destination):
     (destination/'panel.db').chmod(0o600)
 
 def sync_connections(tag):
+    if version(tag)>=(0,3,40):run(['/usr/bin/python3',str(APP/'control.py'),'health-install'])
+    elif HEALTH_UNIT.exists():run(['systemctl','disable','--now','ngpanel-health.service'])
+    if version(tag)>=(0,3,40):run(['/usr/bin/python3',str(APP/'control.py'),'traffic-install'])
+    elif TRAFFIC_UNIT.exists():run(['systemctl','disable','--now','ngpanel-traffic.service'])
     if version(tag)>=(0,3,39):
         run(['/usr/bin/python3',str(APP/'control.py'),'connections-install'])
     elif CONNECTIONS_UNIT.exists():
         run(['systemctl','disable','--now','ngpanel-connections.service'])
 
 def replace_files(source):
+    if HEALTH_UNIT.exists():run(['systemctl','stop','ngpanel-health.service'])
+    if TRAFFIC_UNIT.exists():run(["systemctl","stop","ngpanel-traffic.service"])
     if CONNECTIONS_UNIT.exists():run(['systemctl','stop','ngpanel-connections.service'])
     for name in FILES:
         tmp=APP/(name+'.update-new');shutil.copy2(source/name,tmp);os.chown(tmp,0,0);os.replace(tmp,APP/name)

@@ -19,7 +19,7 @@ func operationKind(action string) string {
 	switch action {
 	case "panel-update-check", "panel-update-install", "panel-update-rollback":
 		return "panel"
-	case "install":
+	case "install", "xray-update":
 		return "install"
 	case "check", "apply", "start", "restart", "stop", "rollback", "network", "network-save-apply", "network-confirm", "logs", "geodata", "dependencies":
 		return "control"

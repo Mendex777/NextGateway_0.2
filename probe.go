@@ -43,6 +43,7 @@ func startProbe(id string, modes ...string) error {
 		defer probeLock.Unlock()
 		result := probeNodeMode(context.Background(), raw, mode)
 		result.RunID = runID
+		recordNodeMapProbe(id, result.State == "ok", time.Now().UTC())
 		saveProbe(id, result)
 	}()
 	return nil

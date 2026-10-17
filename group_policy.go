@@ -292,6 +292,7 @@ func groupWorker() {
 		if e != nil {
 			continue
 		}
+		observeMapProbes(all)
 		snapshot, _ := json.Marshal(runtime.Groups)
 		key := runtime.ConfigHash + string(snapshot)
 		groupControl.Lock()

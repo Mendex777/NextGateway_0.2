@@ -112,6 +112,7 @@ func startGroupCheck(id string, requests ...string) error {
 			}
 			saveProbe(node, ProbeResult{State: "running", Mode: "real", RunID: runID})
 			probe := probeNode(raws[node])
+			recordNodeMapProbe(node, probe.State == "ok", time.Now().UTC())
 			probe.RunID = runID
 			saveProbe(node, probe)
 			tag := "auto-vpn-" + id + "-" + node + "-"

@@ -57,6 +57,7 @@ type Node struct {
 	Port                                                 string
 }
 type Page struct {
+	Home                                                                  HomeOverview
 	VPNUnavailable, VPNWarning                                            string
 	SourceCount, NodeCount, RuleCount, DeviceCount                        int
 	GatewayReady                                                          bool
@@ -417,13 +418,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			e = controlErr
 		} else {
 			switch r.FormValue("action") {
-			case "install":
-				f, err := os.OpenFile("/var/lib/ngpanel/jobs/install.request", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-				e = err
-				if err == nil {
-					f.Close()
-				}
-				msg = "Установка запрошена. Обновите страницу через несколько секунд."
+			case "install", "xray-update":
+				e = requestCoreInstall(r.FormValue("action") == "xray-update")
+				msg = "Обновление Xray поставлено в очередь"
 			case "settings":
 				msg = "Маршрут сохранён. Нажмите «Применить изменения», чтобы изменить трафик."
 				mode := r.FormValue("mode")
@@ -496,6 +493,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func pageData(r *http.Request) Page {
+	if r.URL.Query().Get("tab") == "settings" {
+		return Page{Tab: "settings", PanelVersion: panelVersion, PanelCommit: panelCommit}
+	}
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
 	p.Network = gatewayNetwork()
 	if detected, e := detectNetwork(); e == nil {
@@ -524,6 +524,7 @@ func pageData(r *http.Request) Page {
 	p.Pending, p.ConfigError = configurationState()
 
 	if p.Tab == "status" {
+		p.Home = homeOverview(p.Runtime)
 		if p.Runtime.Gateway {
 			policy := command("ip", "-4", "rule")
 			routes := command("ip", "-4", "route", "show", "table", "100")
@@ -634,6 +635,24 @@ func pageData(r *http.Request) Page {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--collect-health" {
+		if e := collectServiceHealth(); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "--check-health" {
+		collector := healthCollector{}
+		_ = json.NewEncoder(os.Stdout).Encode(collector.sample())
+		return
+	}
+
+	if len(os.Args) == 2 && os.Args[1] == "--collect-traffic" {
+		if e := collectTraffic(); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--collect-connections" {
 		if e := collectConnections(); e != nil {
 			log.Fatal(e)
@@ -679,6 +698,8 @@ func main() {
 	startDashboardSampler()
 	if os.Getenv("NG_REVIEW") != "1" {
 		go ensureConnectionCollector()
+		go ensureTrafficCollector()
+		go componentUpdateWorker()
 		go subscriptionWorker()
 		go groupWorker()
 	}

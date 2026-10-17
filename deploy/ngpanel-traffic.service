@@ -1,0 +1,22 @@
+[Unit]
+Description=NGPanel per-device and outbound traffic accounting
+After=network.target xray.service
+[Service]
+Group=ngpanel
+RuntimeDirectory=ngpanel-traffic
+RuntimeDirectoryMode=0750
+StateDirectory=ngpanel-traffic
+StateDirectoryMode=0700
+ExecStart=/opt/ngpanel/ngpanel --collect-traffic
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/ngpanel-traffic /var/lib/ngpanel-traffic
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+[Install]
+WantedBy=multi-user.target

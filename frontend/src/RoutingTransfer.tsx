@@ -1,21 +1,29 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, App, Button, Checkbox, Form, Input, Modal, Select, Space, Table, Upload, Typography } from "antd";
 import { DownloadOutlined, UploadOutlined, GithubOutlined } from "./icons";
 import type { Page } from "./types";
 import { Target } from "./common";
 type Template = {format:string;version:number;default_route:string;outgoings:{key:string;label:string;kind:string}[];rules:{name:string;kind:string;value:string;target:string;source?:string;disabled?:boolean}[]};
-export default function RoutingTransfer({p,onDone}:{p:Page;onDone:()=>Promise<unknown>}) {
+const developerRoutingURL="https://raw.githubusercontent.com/Mendex777/NextGateway_0.2/codex/routing-template/templates/routing.json";
+export default function RoutingTransfer({p,onDone,developerImport=false,onDeveloperImportOpened}:{p:Page;onDone:()=>Promise<unknown>;developerImport?:boolean;onDeveloperImportOpened?:()=>void}) {
  const { message }=App.useApp();
  const [open,setOpen]=useState(false),[url,setURL]=useState(""),[template,setTemplate]=useState<Template>(),[mapping,setMapping]=useState<Record<string,string>>({}),[sources,setSources]=useState<Record<string,string>>({}),[replace,setReplace]=useState(false),[useDefault,setUseDefault]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const [developerMode,setDeveloperMode]=useState(false);
+ const previewRevision=useRef(0);
+ const openImport=useCallback((developer:boolean)=>{
+  previewRevision.current++;setOpen(true);setTemplate(undefined);setError("");setMapping({});setSources({});setReplace(false);setUseDefault(false);setBusy(false);setDeveloperMode(developer);
+  if(developer)setURL(developerRoutingURL);
+ },[]);
+ useEffect(()=>{if(developerImport){openImport(true);onDeveloperImportOpened?.();}},[developerImport,openImport,onDeveloperImportOpened]);
  const request=async(body:unknown)=>{const response=await fetch("/routes-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!response.ok)throw Error(await response.text());return response.json();};
- const preview=async(body:unknown)=>{setBusy(true);setError("");try{const t:Template=await request({operation:"preview",...body as object});setTemplate(t);setMapping({});setSources(Object.fromEntries(t.rules.filter(r=>r.source).map(r=>[r.source!,r.source!])));setReplace(false);setUseDefault(false);}catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}};
+ const preview=async(body:unknown)=>{const revision=++previewRevision.current;setBusy(true);setError("");try{const t:Template=await request({operation:"preview",...body as object});if(revision!==previewRevision.current)return;setTemplate(t);setMapping({});setSources(Object.fromEntries(t.rules.filter(r=>r.source).map(r=>[r.source!,r.source!])));setReplace(false);setUseDefault(false);}catch(e){if(revision===previewRevision.current)setError(String(e instanceof Error?e.message:e));}finally{if(revision===previewRevision.current)setBusy(false);}};
  const submit=async()=>{if(!template)return;setBusy(true);setError("");try{const result=await request({operation:"import",template,mapping,sources,replace,default:useDefault,before:p.RuleOrder});await onDone();void message.success(`Импортировано правил: ${result.count}. Нажмите «Применить».`);setOpen(false);}catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}};
  const names=Object.fromEntries((template?.outgoings||[]).map(e=>[e.key,e.label]));
  const label=(key:string)=>({direct:"Direct — провайдер",proxy:"Выбранный VPN",block:"Блокировать"}[key]||names[key]||key);
  return <>
  <Button icon={<DownloadOutlined />} href="/routes-template">Экспорт правил</Button>
- <Button icon={<UploadOutlined />} onClick={()=>{setOpen(true);setTemplate(undefined);setError("");}}>Импорт правил</Button>
- <Modal title="Импорт маршрутов" open={open} onCancel={()=>setOpen(false)} width={900} style={{top:24}} footer={template?<Space><Button onClick={()=>setTemplate(undefined)}>Другой шаблон</Button><Button onClick={()=>setOpen(false)}>Отмена</Button><Button type="primary" loading={busy} disabled={template.outgoings.some(e=>!mapping[e.key])} onClick={()=>void submit()}>{replace?"Заменить правила":"Добавить правила"}</Button></Space>:null}>
+ <Button icon={<UploadOutlined />} onClick={()=>openImport(false)}>Импорт правил</Button>
+ <Modal title={developerMode?"Импорт маршрутов разработчика":"Импорт маршрутов"} open={open} onCancel={()=>setOpen(false)} width={900} style={{top:24}} footer={template?<Space wrap><Button onClick={()=>setTemplate(undefined)}>Другой шаблон</Button><Button onClick={()=>setOpen(false)}>Отмена</Button><Button type="primary" loading={busy} disabled={template.outgoings.some(e=>!mapping[e.key])} onClick={()=>void submit()}>{replace?"Заменить правила":"Добавить правила"}</Button></Space>:null}>
  {error&&<Alert showIcon type="error" title={error} style={{marginBottom:16}} />}
  {!template?<Space orientation="vertical" style={{width:"100%"}} size={16}>
  <Typography.Text>Загрузите JSON, созданный кнопкой «Экспорт правил», или укажите ссылку GitHub на такой файл.</Typography.Text>
@@ -28,7 +36,7 @@ export default function RoutingTransfer({p,onDone}:{p:Page;onDone:()=>Promise<un
  {Object.entries(sources).map(([original,value])=><Form.Item key={original} label={`IP устройств в шаблоне: ${original}`} extra="Проверьте адреса для вашей сети. Пусто — все устройства; для правила устройства адрес обязателен."><Input.TextArea aria-label={`IP устройств: ${original}`} value={value} onChange={e=>setSources(old=>({...old,[original]:e.target.value}))} rows={2} /></Form.Item>)}
  <Space orientation="vertical" style={{marginBottom:16}}><Checkbox checked={replace} onChange={e=>setReplace(e.target.checked)}>Заменить все существующие правила</Checkbox><Checkbox checked={useDefault} onChange={e=>setUseDefault(e.target.checked)}>Импортировать маршрут по умолчанию: {label(template.default_route)}</Checkbox></Space>
  {replace&&<Alert type="warning" showIcon title="Существующие правила будут удалены. Для возврата заранее экспортируйте их." style={{marginBottom:16}} />}
- <Table size="small" rowKey={(_,i)=>String(i)} pagination={{pageSize:10}} dataSource={template.rules} columns={[{title:"Название",dataIndex:"name"},{title:"Тип",dataIndex:"kind"},{title:"Устройства",dataIndex:"source",render:v=>v||"Все"},{title:"Исходящий шаблона",dataIndex:"target",render:label},{title:"Включено",dataIndex:"disabled",render:v=>v?"Нет":"Да"}]} />
+ <Table size="small" scroll={{x:600}} rowKey={(_,i)=>String(i)} pagination={{pageSize:10}} dataSource={template.rules} columns={[{title:"Название",dataIndex:"name"},{title:"Тип",dataIndex:"kind"},{title:"Устройства",dataIndex:"source",render:v=>v||"Все"},{title:"Исходящий шаблона",dataIndex:"target",render:label},{title:"Включено",dataIndex:"disabled",render:v=>v?"Нет":"Да"}]} />
  </Form>
  </>}
  </Modal>

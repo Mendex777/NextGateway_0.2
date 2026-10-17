@@ -18,7 +18,7 @@ class UpdateTests(unittest.TestCase):
         self.root=pathlib.Path(self.temp.name);self.app=self.root/'app';self.app.mkdir();self.updates=self.root/'updates';self.updates.mkdir();self.db=self.root/'panel.db'
         with sqlite3.connect(self.db) as db:db.execute('CREATE TABLE example(value TEXT)');db.execute("INSERT INTO example VALUES('private subscription')")
         for n in u.FILES:(self.app/n).write_bytes(b'old '+n.encode())
-        self.patches=[patch.object(u,n,v) for n,v in {'APP':self.app,'DB':self.db,'UPDATES':self.updates,'PREVIOUS':self.updates/'previous','CONNECTIONS_UNIT':self.root/'collector.service'}.items()]
+        self.patches=[patch.object(u,n,v) for n,v in {'APP':self.app,'DB':self.db,'UPDATES':self.updates,'PREVIOUS':self.updates/'previous','CONNECTIONS_UNIT':self.root/'collector.service','TRAFFIC_UNIT':self.root/'traffic.service','HEALTH_UNIT':self.root/'health.service'}.items()]
         for p in self.patches:p.start();self.addCleanup(p.stop)
     def test_checksum_failure_keeps_running_panel(self):
         with patch.object(u,'download',return_value=b'corrupt'),patch.object(u,'report'),patch.object(u,'run') as run:
@@ -37,6 +37,15 @@ class UpdateTests(unittest.TestCase):
             (self.root/'collector.service').write_text('installed')
             u.sync_connections('v0.3.38')
             run.assert_called_once_with(['systemctl','disable','--now','ngpanel-connections.service'])
+    def test_traffic_upgrade_and_rollback(self):
+        with patch.object(u,'run') as run:
+            u.sync_connections('v0.3.40')
+            self.assertIn(['/usr/bin/python3',str(self.app/'control.py'),'traffic-install'],[call.args[0] for call in run.call_args_list])
+            self.assertIn(['/usr/bin/python3',str(self.app/'control.py'),'health-install'],[call.args[0] for call in run.call_args_list])
+            run.reset_mock();(self.root/'health.service').write_text('installed');(self.root/'traffic.service').write_text('installed')
+            u.sync_connections('v0.3.39')
+            self.assertIn(['systemctl','disable','--now','ngpanel-traffic.service'],[call.args[0] for call in run.call_args_list])
+            self.assertIn(['systemctl','disable','--now','ngpanel-health.service'],[call.args[0] for call in run.call_args_list])
     def test_failed_start_restores_files_and_database(self):
         data=archive();calls=[]
         def run(args,**kw):

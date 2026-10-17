@@ -15,3 +15,5 @@ sub.txt
 ngpanel-*.json
 dist/
 node_modules/
+
+frontend/dist-manifest.json

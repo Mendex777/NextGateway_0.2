@@ -108,6 +108,8 @@ export interface RouteResult {
   Note: string;
 }
 export interface Page {
+ Home?: { Available: boolean; Default: string; RuleCount: number; Exits: {Tag:string; Name:string; GroupID:string; Rules:number; Members?:{Tag:string;Name:string}[]}[] };
+ GatewayHealth?: string;
   VPNUnavailable: string;
   VPNWarning: string;
   Tab: string;
@@ -193,3 +195,8 @@ export interface ActionResult {
   pending: boolean;
   config_error: string;
 }
+
+export interface TrafficValue { UpBytes:number;DownBytes:number;UpBPS:number;DownBPS:number }
+export interface TrafficRoute {Source:string;Outbound:string;UpBPS:number;DownBPS:number}
+export interface MapProbe {ID:string;Outbound:string;Time:string;Success:boolean}
+export interface TrafficSnapshot {History?:{time:number;up:number;down:number;sent:number;received:number}[];Routes?:TrafficRoute[];RoutesAvailable?:boolean;Probes?:MapProbe[];Updated:string;Started:string;DevicesAvailable:boolean;OutboundsAvailable:boolean;Message:string;Devices:Record<string,TrafficValue>;Outbounds:Record<string,TrafficValue>}

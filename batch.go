@@ -116,8 +116,18 @@ func probeStatus() any {
 	status := batchStatus
 	batchMu.Unlock()
 	results := map[int]ProbeResult{}
-	for _, n := range allNodes() {
-		results[n.ID] = n.Probe
+	rows, err := db.Query("SELECT n.id, COALESCE(s.value,'{}') FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id")
+	if err == nil {
+		for rows.Next() {
+			var id int
+			var raw string
+			var probe ProbeResult
+			if rows.Scan(&id, &raw) == nil {
+				json.Unmarshal([]byte(raw), &probe)
+				results[id] = probe
+			}
+		}
+		rows.Close()
 	}
 	return struct {
 		Batch BatchStatus

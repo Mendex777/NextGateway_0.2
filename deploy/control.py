@@ -49,6 +49,37 @@ def install_connections():
     return 'Сборщик соединений установлен и запущен'
 
 
+TRAFFIC_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-traffic.service')
+TRAFFIC_SERVICE='[Unit]\nDescription=NGPanel per-device and outbound traffic accounting\nAfter=network.target xray.service\n[Service]\nGroup=ngpanel\nRuntimeDirectory=ngpanel-traffic\nRuntimeDirectoryMode=0750\nStateDirectory=ngpanel-traffic\nStateDirectoryMode=0700\nExecStart=/opt/ngpanel/ngpanel --collect-traffic\nRestart=on-failure\nRestartSec=3\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nReadWritePaths=/run/ngpanel-traffic /var/lib/ngpanel-traffic\nCapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN\nRestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6\n[Install]\nWantedBy=multi-user.target\n'
+def install_traffic():
+    if os.geteuid()!=0: raise ValueError('Traffic collector setup requires root')
+    if TRAFFIC_UNIT.is_symlink(): raise ValueError('Traffic collector is masked or managed by an administrator')
+    if not TRAFFIC_UNIT.exists() or TRAFFIC_UNIT.read_text()!=TRAFFIC_SERVICE:
+        atomic(TRAFFIC_UNIT,TRAFFIC_SERVICE)
+        run(['systemctl','daemon-reload'])
+    run(['systemctl','enable','--now','ngpanel-traffic.service'])
+    return 'Сборщик трафика установлен и запущен'
+
+
+HEALTH_BASELINE=pathlib.Path('/etc/ngpanel/gateway-baseline.json')
+HEALTH_UNIT=pathlib.Path('/etc/systemd/system/ngpanel-health.service')
+HEALTH_SERVICE='[Unit]\nDescription=NGPanel read-only gateway readiness checks\nAfter=network.target xray.service ngpanel-gateway.service\n[Service]\nGroup=ngpanel\nRuntimeDirectory=ngpanel-health\nRuntimeDirectoryMode=0750\nExecStart=/opt/ngpanel/ngpanel --collect-health\nRestart=on-failure\nRestartSec=3\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nReadWritePaths=/run/ngpanel-health\nCapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_SETUID CAP_SETGID\nRestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6\n[Install]\nWantedBy=multi-user.target\n'
+
+def install_health():
+    if os.geteuid()!=0: raise ValueError('Health collector setup requires root')
+    if HEALTH_UNIT.is_symlink(): raise ValueError('Health collector is masked or managed by an administrator')
+    # Compile saved expected rules separately; never adopt possibly drifted live rules.
+    if not HEALTH_BASELINE.exists() and NFT.exists():
+        code="import subprocess;subprocess.run(['nft','-f','/etc/ngpanel/gateway.nft'],check=True);subprocess.run(['nft','-j','list','table','inet','ngpanel'],check=True)"
+        result=run(['unshare','--net','/usr/bin/python3','-c',code],check=False)
+        if result.returncode==0: atomic(HEALTH_BASELINE,result.stdout,0o600)
+    if not HEALTH_UNIT.exists() or HEALTH_UNIT.read_text()!=HEALTH_SERVICE:
+        atomic(HEALTH_UNIT,HEALTH_SERVICE)
+        run(['systemctl','daemon-reload'])
+    run(['systemctl','enable','--now','ngpanel-health.service'])
+    return 'Проверка компонентов установлена и запущена'
+
+
 def load(path, default=None):
     if not path.exists():
         return {} if default is None else default
@@ -58,7 +89,7 @@ def active():
     return run(['systemctl', 'is-active', '--quiet', 'xray'], check=False).returncode == 0
 
 def validate(config):
-    if not isinstance(config, dict) or not {'log','dns','inbounds','outbounds','routing'}<=set(config) or set(config)-{'log','dns','inbounds','outbounds','routing','observatory','api'}:
+    if not isinstance(config, dict) or not {'log','dns','inbounds','outbounds','routing'}<=set(config) or set(config)-{'log','dns','inbounds','outbounds','routing','observatory','api','stats','policy'}:
         raise ValueError('Unexpected configuration schema')
     if config['log'] not in ({'loglevel':'warning'}, {'loglevel':'info'}):
         raise ValueError('Only journal logging is allowed')
@@ -76,9 +107,16 @@ def validate(config):
     for outbound in config['outbounds']:
         if outbound.get('protocol') not in ('vless','hysteria','freedom','blackhole','dns'):
             raise ValueError('Unexpected outbound protocol')
-    has_balance='observatory' in config or 'api' in config or bool(config['routing'].get('balancers'))
+    stats='stats' in config or 'policy' in config
+    if stats and (config.get('stats')!={} or config.get('policy')!={'system':dict.fromkeys(('statsInboundUplink','statsInboundDownlink','statsOutboundUplink','statsOutboundDownlink'),True)}): raise ValueError('Unexpected traffic statistics settings')
+    has_balance='observatory' in config or bool(config['routing'].get('balancers'))
+    if has_balance or stats:
+        services=['RoutingService','ObservatoryService'] if has_balance else []
+        if stats: services.append('StatsService')
+        if config.get('api')!={'tag':'balance-api','listen':'127.0.0.1:10085','services':services}: raise ValueError('Only fixed local API services are allowed')
+    elif 'api' in config: raise ValueError('Unexpected API')
     if has_balance:
-        api={'tag':'balance-api','listen':'127.0.0.1:10085','services':['RoutingService','ObservatoryService']}
+        api={'tag':'balance-api','listen':'127.0.0.1:10085','services':['RoutingService','ObservatoryService']+(['StatsService'] if stats else [])}
         if config.get('api')!=api:raise ValueError('Only local balance API is allowed')
         obs=config.get('observatory',{})
         if not isinstance(obs,dict) or set(obs)!={'subjectSelector','probeUrl','probeInterval','enableConcurrency'} or obs.get('subjectSelector')!=['auto-vpn-'] or obs.get('probeUrl')!='https://www.google.com/generate_204' or obs.get('enableConcurrency') is not True:
@@ -181,7 +219,7 @@ def nft_text(n):
   iifname != "__INTERFACE__" return
   meta nfproto != ipv4 return
   ip saddr != __CIDR__ return
-  meta mark 666 return
+  meta mark & 0x0000ffff == 666 return
   meta l4proto { tcp, udp } th dport 53 return
   fib daddr type local return
   ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 } return
@@ -243,6 +281,7 @@ def enable_gateway(n):
     run(['sysctl','-w','net.ipv4.ip_forward=1','net.ipv4.conf.all.rp_filter=2'])
     pathlib.Path('/proc/sys/net/ipv4/conf',n['interface'],'rp_filter').write_text('2')
     atomic(NFT,text)
+    atomic(HEALTH_BASELINE,run(['nft','-j','list','table','inet','ngpanel']).stdout,0o600)
 
 def restore(config_bytes, meta, was_active):
     if config_bytes is not None:
@@ -404,6 +443,10 @@ if __name__ == '__main__':
             with open('/run/ngpanel-control.lock','w') as lock:
                 fcntl.flock(lock,fcntl.LOCK_EX)
                 network_revert()
+        elif sys.argv[1]=='health-install':
+            install_health()
+        elif sys.argv[1]=='traffic-install':
+            install_traffic()
         elif sys.argv[1]=='connections-install':
             install_connections()
         elif sys.argv[1]=='gateway-restore':
@@ -422,11 +465,12 @@ if __name__ == '__main__':
                 if not stat.S_ISREG(info.st_mode) or info.st_uid!=pwd.getpwnam('ngpanel').pw_uid or info.st_size>2*1024*1024: raise ValueError('Invalid request')
                 job=json.load(file)
             action=job.get('Action','')
-            if action not in ('check','apply','start','restart','stop','rollback','network','network-confirm','logs','geodata','dependencies','connections'): raise ValueError('Unknown action')
+            if action not in ('check','apply','start','restart','stop','rollback','network','network-confirm','logs','geodata','dependencies','connections','traffic'): raise ValueError('Unknown action')
             runtime.update(State='running',Action=action,Message='Выполняется задание')
             atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
             message=''
             if action in ('check','apply'): message=apply(job['config'],job.get('gateway') is True,job.get('config_hash',''),job.get('network'),job.get('groups',[]))
+            elif action=='traffic': message=install_traffic()
             elif action=='connections': message=install_connections()
             elif action=='dependencies':
                 run(['apt-get','update'],timeout=120)

@@ -119,21 +119,26 @@ export default function Routing({
   p,
   run,
   reload,
+  developerImport=false,
+  onDeveloperImportOpened,
 }: {
   p: Page;
   run: Run;
   reload: (query?: Values) => Promise<Page>;
+  developerImport?:boolean;
+  onDeveloperImportOpened?:()=>void;
 }) {
   const { modal, message } = App.useApp();
   const [geoTarget, setGeoTarget] = useState("proxy"),
     [geoFilter, setGeoFilter] = useState("");
-  const [tab, setTab] = useState(p.Tab === "devices" ? "devices" : "rules"),
+  const [tab, setTab] = useState(p.Tab === "devices" ? "devices" : (["connections", "devices"].includes(new URLSearchParams(location.search).get("view") || "") ? new URLSearchParams(location.search).get("view")! : "rules")),
     [rules, setRules] = useState(p.Rules || []),
     [editing, setEditing] = useState<Rule | null | undefined>(),
     [result, setResult] = useState<RouteResult | null>(null),
     [geo, setGeo] = useState<Page | null>(null),
     [query, setQuery] = useState(""),
     [searching, setSearching] = useState(false);
+  useEffect(()=>{if(developerImport)setTab("rules");},[developerImport]);
   const [selectedRules, setSelectedRules] = useState<number[]>([]);
   const [bulkTarget, setBulkTarget] = useState("proxy");
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -255,7 +260,7 @@ export default function Routing({
   const rulesPanel = (
     <>
       <Space wrap className="routing-toolbar">
- <RoutingTransfer p={p} onDone={()=>reload()} />
+ <RoutingTransfer p={p} onDone={()=>reload()} developerImport={developerImport} onDeveloperImportOpened={onDeveloperImportOpened} />
         <Button
           type="primary"
           icon={<PlusOutlined />}

@@ -56,3 +56,36 @@ func TestDeviceRouteAndManualName(t *testing.T) {
 	}
 }
 func strconvID(id int64) string { return fmt.Sprint(id) }
+
+func TestMapRenamePreservesDeviceRoute(t *testing.T) {
+	configDatabase(t)
+	r := httptest.NewRequest("POST", "/api/action", nil)
+	r.Form = url.Values{"ip": {"192.168.1.56"}, "name": {"Phone"}, "target": {"block"}}
+	if err := saveDevice(r); err != nil {
+		t.Fatal(err)
+	}
+	before := devices()[0]
+	var ruleName, target string
+	if err := db.QueryRow("SELECT name,target FROM rules WHERE id=?", before.RuleID).Scan(&ruleName, &target); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"My phone", ""} {
+		r.Form.Set("name", name)
+		if err := saveDeviceName(r); err != nil {
+			t.Fatal(err)
+		}
+		after := devices()[0]
+		var gotName, gotTarget string
+		db.QueryRow("SELECT name,target FROM rules WHERE id=?", before.RuleID).Scan(&gotName, &gotTarget)
+		if after.RuleID != before.RuleID || after.Target != before.Target || gotName != ruleName || gotTarget != target {
+			t.Fatal("renaming rewrote routing")
+		}
+		if after.Manual != (name != "") {
+			t.Fatal("manual name state not saved")
+		}
+	}
+	r.Form.Set("ip", "8.8.8.8")
+	if saveDeviceName(r) == nil {
+		t.Fatal("outside-LAN address accepted")
+	}
+}

@@ -53,7 +53,11 @@ func runProbeJobs(ctx context.Context, jobs []probeJob, mode string, complete fu
 	lanes.Add(2)
 	go func() {
 		defer lanes.Done()
-		parallelProbes(ctx, tcp, probeTCPWorkers, func(job probeJob) { complete(job, probeTCP(ctx, job.Outbound)) })
+		parallelProbes(ctx, tcp, probeTCPWorkers, func(job probeJob) {
+			r := probeTCP(ctx, job.Outbound)
+			recordNodeMapProbe(job.ID, r.State == "ok", time.Now().UTC())
+			complete(job, r)
+		})
 	}()
 	go func() {
 		defer lanes.Done()
@@ -142,6 +146,7 @@ func probeHTTPBatchURLs(parent context.Context, jobs []probeJob, mode, testURL, 
 			address := net.JoinHostPort("127.0.0.1", strconv.Itoa(ports[i]))
 			r := probeHTTPThroughSOCKS(ctx, address, mode, testURL, traceURL)
 			r.UDP = jobs[i].Outbound["protocol"] == "hysteria"
+			recordNodeMapProbe(jobs[i].ID, r.State == "ok", time.Now().UTC())
 			complete(jobs[i], r)
 		})
 	})

@@ -320,6 +320,7 @@ func buildConfig() (map[string]any, error) {
 	if e := addGroups(config); e != nil {
 		return nil, e
 	}
+	enableTrafficStats(config)
 	return config, nil
 }
 func enqueue(action string, config map[string]any) error {
@@ -422,6 +423,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "panel-update-check", "panel-update-install", "panel-update-rollback":
 		err := requestPanelUpdate(strings.TrimPrefix(r.FormValue("action"), "panel-update-"))
 		return true, "Задание обновления панели поставлено в очередь", err
+	case "component-updates-check":
+        requestComponentUpdateCheck();return true,"Проверка обновлений запущена",nil
 	case "xray-update-check":
 		message, err := checkCoreUpdate()
 		return true, message, err
@@ -430,6 +433,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 	case "device-discover":
 		e = discoverDevices()
 		msg = "Обнаружение запущено; обновите страницу через несколько секунд"
+	case "device-name":
+		e = saveDeviceName(r)
 	case "device-save":
 		e = saveDevice(r)
 	case "source-probe", "probe-all":

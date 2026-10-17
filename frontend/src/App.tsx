@@ -31,7 +31,8 @@ import { usePanelTheme } from "./PanelTheme";
 import Routing from "./Routing";
 import Subscriptions from "./Subscriptions";
 import Dashboard from "./Dashboard";
-import { Gateway, Diagnostics, Backup } from "./Pages";
+import { Gateway, Backup } from "./Pages";
+import Diagnostics from "./Diagnostics";
 const navigation = [
   { key: "status", label: "Главная", icon: <DashboardOutlined /> },
   {
@@ -42,7 +43,6 @@ const navigation = [
   { key: "routing", label: "Маршрутизация", icon: <SwapOutlined /> },
   { key: "gateway", label: "Сеть и DNS", icon: <ApartmentOutlined /> },
   { key: "diagnostics", label: "Диагностика", icon: <ToolOutlined /> },
-  { key: "settings", label: "Настройки панели", icon: <SettingOutlined /> },
 ];
 function stored(key: string, fallback: boolean) {
   try {
@@ -57,8 +57,15 @@ export default function App() {
   const { message } = AntApp.useApp();
   const { baseTheme } = usePanelTheme();
   const [tab, setTab] = useState(
-    new URLSearchParams(location.search).get("tab") || "status",
+    new URLSearchParams(location.search).get("tab") === "settings" ? "status" : new URLSearchParams(location.search).get("tab") || "status",
   );
+  const developerImportPending=useRef(false);
+  const versionClicks=useRef({count:0,last:0});
+  const [developerImport,setDeveloperImport]=useState(false);
+  const developerImportOpened=useCallback(()=>setDeveloperImport(false),[]);
+  const [appearanceOpen,setAppearanceOpen]=useState(()=>new URLSearchParams(location.search).get("tab")==="settings");
+  useEffect(()=>{if(new URLSearchParams(location.search).get("tab")==="settings")history.replaceState(null,"","/?tab=status");},[]);
+  const [diagnosticsView,setDiagnosticsView]=useState(()=>new URLSearchParams(location.search).get("view")||"logs");
   const [page, setPage] = useState<Page | null>(null),
     [error, setError] = useState(""),
     [working, setWorking] = useState(false),
@@ -90,7 +97,7 @@ export default function App() {
     const abort = new AbortController();
     setPage(null);
     getPage(tab, {}, abort.signal)
-      .then(setPage)
+      .then(result=>{setPage(result);if(tab==="routing"&&developerImportPending.current){developerImportPending.current=false;setDeveloperImport(true);}})
       .catch((e) => {
         if (e.name !== "AbortError") setError(e.message);
       });
@@ -104,8 +111,13 @@ export default function App() {
     return () => clearInterval(timer);
   }, [reload, working, operation]);
   useEffect(() => {
-    const listener = () =>
-      setTab(new URLSearchParams(location.search).get("tab") || "status");
+    const listener = () => {
+      const requested=new URLSearchParams(location.search).get("tab")||"status";
+      setTab(requested==="settings"?"status":requested);
+      if(requested!=="routing"){developerImportPending.current=false;setDeveloperImport(false);}
+      if(requested==="settings")setAppearanceOpen(true);
+      setDiagnosticsView(new URLSearchParams(location.search).get("view") || "logs");
+    };
     window.addEventListener("popstate", listener);
     return () => window.removeEventListener("popstate", listener);
   }, []);
@@ -148,9 +160,21 @@ export default function App() {
     };
   }, [operation, reload]);
   const navigate = (next: string) => {
+    if(new URLSearchParams("tab="+next).get("tab")!=="routing"){developerImportPending.current=false;setDeveloperImport(false);}
     history.pushState(null, "", "/?tab=" + next);
-    setTab(next);
+    setTab(new URLSearchParams("tab=" + next).get("tab") || "status");
+    setDiagnosticsView(new URLSearchParams("tab="+next).get("view")||"logs");
     setDrawer(false);
+  };
+  const onVersionClick=()=>{
+    const now=performance.now(),sequence=versionClicks.current;
+    sequence.count=now-sequence.last>3000?1:sequence.count+1;
+    sequence.last=now;
+    if(sequence.count<8)return;
+    sequence.count=0;sequence.last=0;
+    setAppearanceOpen(false);
+    if(tab==="routing"&&page?.Tab==="routing"){setDeveloperImport(true);setDrawer(false);}
+    else{developerImportPending.current=true;navigate("routing");}
   };
   const run = async (name: string, values: Values = {}) => {
     setWorking(true);
@@ -203,18 +227,11 @@ export default function App() {
         onClick={({ key }) => navigate(key)}
       />
       <div className="sider-footer">
-        {collapsed ? (
-          "NG"
-        ) : (
-          <>
-            <span>{page?.PanelVersion || "NGPanel"}</span>
-            <div>
-              <a href="/LICENSE" target="_blank" rel="noreferrer">
-                GPL-3.0
-              </a>
-            </div>
-          </>
-        )}
+        <div className="sider-footer-row">
+          {!collapsed&&<button className="sider-version" aria-label={`Версия панели ${page?.PanelVersion||""}`} onClick={onVersionClick}><span>{page?.PanelVersion||"NGPanel"}</span></button>}
+          <Tooltip title="Оформление"><Button type="text" size="small" aria-label="Оформление" icon={<SettingOutlined/>} onClick={()=>{setDrawer(false);setAppearanceOpen(true);}}/></Tooltip>
+        </div>
+        {!collapsed&&<a href="/LICENSE" target="_blank" rel="noreferrer">GPL-3.0</a>}
       </div>
     </>
   );
@@ -234,6 +251,7 @@ export default function App() {
           {sidebar(!pinned && !hover)}
         </Layout.Sider>
       </div>
+      <Drawer title="Оформление" placement="right" width="min(420px, 100vw)" open={appearanceOpen} onClose={()=>setAppearanceOpen(false)} className="appearance-drawer"><PanelSettings/></Drawer>
       <Layout>
         <Layout.Header className="mobile-header">
           <Button
@@ -255,7 +273,7 @@ export default function App() {
         >
           {sidebar(false)}
         </Drawer>
-        <Layout.Content id="main-content">
+        <Layout.Content id="main-content" className={tab === "gateway" || tab === "diagnostics" ? "bounded-content" : undefined}>
           {page && tab !== "settings" && (tab !== "status" || page.Pending || page.ConfigError) && (
             <Card className="config-card">
               <div className="config-row">
@@ -315,14 +333,13 @@ export default function App() {
               <div className="loading">
                 <Spin />
               </div>
-            ) : tab === "settings" ? (
-              <PanelSettings />
             ) : (tab === "routing" || tab === "devices") ? (
-              <Routing p={page} run={run} reload={reload} />
+              <Routing p={page} run={run} reload={reload} developerImport={developerImport} onDeveloperImportOpened={developerImportOpened} />
             ) : tab === "subscriptions" ? (
               <Subscriptions p={page} run={run} reload={reload} />
             ) : tab === "status" ? (
               <Dashboard
+                working={working}
                 p={page}
                 run={run}
                 navigate={navigate}
@@ -332,7 +349,7 @@ export default function App() {
             ) : tab === "gateway" ? (
               <Gateway p={page} run={run} />
             ) : tab === "diagnostics" ? (
-              <Diagnostics p={page} run={run} />
+              <Diagnostics p={page} run={run} working={working} view={diagnosticsView} navigate={navigate} />
             ) : (
               <Backup reload={reload} />
             )}

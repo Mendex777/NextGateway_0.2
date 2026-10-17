@@ -19,6 +19,7 @@ apt-get install -y --no-install-recommends nftables iproute2 curl avahi-utils ie
 umask 077
 if [ "${NG_PREBUILT:-0}" != 1 ]; then
 test -f frontend/dist/index.html || { echo "Build frontend first: npm ci --prefix frontend && npm run build --prefix frontend" >&2; exit 1; }
+python3 deploy/sync-frontend.py --verify
 PANEL_VERSION=${PANEL_VERSION:-$(cat VERSION)}
 PANEL_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo source)
 go build -trimpath -ldflags "-X main.panelVersion=$PANEL_VERSION -X main.panelCommit=$PANEL_COMMIT" -o ngpanel .
@@ -241,7 +242,32 @@ RestrictAddressFamilies=AF_UNIX AF_NETLINK
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path ngpanel-update.path ngpanel-connections.service
+cat > /etc/systemd/system/ngpanel-traffic.service <<'EOF'
+[Unit]
+Description=NGPanel per-device and outbound traffic accounting
+After=network.target xray.service
+[Service]
+Group=ngpanel
+RuntimeDirectory=ngpanel-traffic
+RuntimeDirectoryMode=0750
+StateDirectory=ngpanel-traffic
+StateDirectoryMode=0700
+ExecStart=/opt/ngpanel/ngpanel --collect-traffic
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/ngpanel-traffic /var/lib/ngpanel-traffic
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now ngpanel ngpanel-install.path ngpanel-control.path ngpanel-update.path ngpanel-connections.service ngpanel-traffic.service
 systemctl restart ngpanel
 
 echo "[4/5] Preparing Xray, geo databases and gateway"
@@ -310,6 +336,7 @@ if initial:
     else:raise RuntimeError('Gateway startup timed out')
 else:
     run(['systemctl','enable','--now','xray','ngpanel-gateway'])
+run(['python3','/opt/ngpanel/control.py','health-install'])
 run(['systemctl','is-active','--quiet','ngpanel','xray'])
 healthy()
 with sqlite3.connect(database) as db:

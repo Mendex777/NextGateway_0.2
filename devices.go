@@ -268,3 +268,29 @@ func saveDevice(r *http.Request) error {
 	}
 	return tx.Commit()
 }
+
+// Renaming from the map must not rewrite the device's routing rule.
+func saveDeviceName(r *http.Request) error {
+	ip, name := strings.TrimSpace(r.FormValue("ip")), strings.TrimSpace(r.FormValue("name"))
+	if !deviceIP(ip) {
+		return fmt.Errorf("Нужен адрес устройства из настроенной подсети LAN")
+	}
+	if len(name) > 200 {
+		return fmt.Errorf("Имя слишком длинное")
+	}
+	deviceLockRecord.Lock()
+	defer deviceLockRecord.Unlock()
+	var d Device
+	raw := setting("device:" + ip)
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &d); err != nil {
+			return err
+		}
+	}
+	d.IP, d.Name, d.Manual = ip, name, name != ""
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	return saveSetting("device:"+ip, string(b))
+}

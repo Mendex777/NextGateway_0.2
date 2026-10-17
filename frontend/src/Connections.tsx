@@ -15,7 +15,7 @@ export default function Connections({ active }: { active: boolean }) {
  const [current,setCurrent]=useState(1),[pageSize,setPageSize]=useState(100);
  const [error, setError] = useState("");
  const [paused, setPaused] = useState(false), [query, setQuery] = useState("");
- const [source, setSource] = useState<string>(), [outbound, setOutbound] = useState<string>();
+ const [source, setSource] = useState<string|undefined>(()=>new URLSearchParams(location.search).get("source")||undefined), [outbound, setOutbound] = useState<string>();
  const [internal, setInternal] = useState(false), [refresh, setRefresh] = useState(0);
  const [loading, setLoading] = useState(false);
  useEffect(() => {

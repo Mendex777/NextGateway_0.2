@@ -5,6 +5,7 @@ cd "$ROOT"
 VERSION=${1:-$(cat VERSION)}
 COMMIT=${SOURCE_COMMIT:-$(git rev-parse --short HEAD)}
 test -f frontend/dist/index.html || { echo "Build frontend first: npm ci --prefix frontend && npm run build --prefix frontend" >&2; exit 1; }
+python3 deploy/sync-frontend.py --verify
 mkdir -p dist
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT

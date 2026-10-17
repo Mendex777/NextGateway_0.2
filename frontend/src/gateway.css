@@ -1,0 +1,8 @@
+.gateway-settings-page{width:100%;max-width:1280px;min-width:0;margin-inline:auto;color:var(--ng-text)}
+.gateway-settings-page>h1{font-size:22px;font-weight:600;letter-spacing:-.4px;margin:0 0 20px}
+.gateway-settings-page>.ant-card{background:var(--ng-surface);border-color:var(--ng-border);border-radius:8px}
+.gateway-settings-page>.ant-card>.ant-card-head{padding-inline:16px;min-height:46px;font-size:14px}
+.gateway-settings-page>.ant-card>.ant-card-body{padding:16px}
+.gateway-settings-page .ant-form-item{margin-bottom:16px}
+.bounded-content>.config-card,.bounded-content>.operation-alert{width:100%;max-width:1280px;margin-inline:auto}
+@media(max-width:650px){.gateway-settings-page>h1{font-size:20px;margin-bottom:16px}.gateway-settings-page>.ant-card>.ant-card-head{padding-inline:12px}.gateway-settings-page>.ant-card>.ant-card-body{padding:12px}}

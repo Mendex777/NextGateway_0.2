@@ -162,12 +162,3 @@ html[data-theme='ultra-dark'] .log-container {
   --log-unknown: #c4c4c4;
   --log-divider: rgba(255, 255, 255, 0.12);
 }
-
-.logmodal-mobile .ant-modal-content {
-  border-radius: 0;
-  height: 100vh;
-}
-
-.logmodal-mobile .ant-modal-body {
-  padding: 12px;
-}

@@ -1,54 +1,30 @@
-// Dashboard layout adapted from 3x-ui v3.9.0 (GPL-3.0); NGPanel metrics and actions.
+// Gateway overview and maintenance dialogs; chart utilities adapted from 3x-ui (GPL-3.0).
 import { useEffect, useState } from "react";
 import {
   Alert,
   App,
   Button,
-  Card,
   Checkbox,
   Modal,
   Space,
   Spin,
-  Tag,
   Tooltip,
   Typography,
   Upload,
-  Grid,
-  theme,
 } from "antd";
 import {
-  ArrowUpOutlined,
-  AreaChartOutlined,
-  BarsOutlined,
-  ClockCircleOutlined,
-  CloudServerOutlined,
-  ControlOutlined,
   CopyOutlined,
-  DatabaseOutlined,
   DownloadOutlined,
-  EyeInvisibleOutlined,
-  EyeOutlined,
-  GlobalOutlined,
-  HddOutlined,
-  PoweroffOutlined,
-  DashboardOutlined,
-  SwapOutlined,
-  ReloadOutlined,
   UploadOutlined,
 } from "./icons";
-import { action, getJSON } from "./api";
-import { Overview } from "./Pages";
+import { getJSON } from "./api";
 import type { Page } from "./types";
 import type { Run } from "./common";
 import "./dashboard.css";
-import LogModal from "./reference/LogModal";
-import Sparkline from "./reference/Sparkline";
-import VitalTile from "./reference/VitalTile";
-import ThroughputCard from "./reference/ThroughputCard";
-import ConnectionsCard from "./reference/ConnectionsCard";
-import { SizeFormatter, CPUFormatter, mean, peak } from "./reference/utils";
+import HomeOverview from "./HomeOverview";
+import SystemHistory from "./SystemHistory";
 
-interface Metrics {
+export interface Metrics {
   time: number;
   cpu: number;
   cores: number;
@@ -102,16 +78,6 @@ const empty: Metrics = {
   xrayThreads: 0,
   interface: "",
 };
-const bytes = SizeFormatter.sizeFormat;
-const percent = (n: number, total: number) => (total ? (100 * n) / total : 0);
-const duration = (n: number) =>
-  n < 60
-    ? n.toFixed(0) + "s"
-    : n < 3600
-      ? (n / 60).toFixed(0) + "m"
-      : n < 86400
-        ? (n / 3600).toFixed(0) + "h"
-        : (n / 86400).toFixed(0) + "d";
 async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   const input = document.createElement("textarea");
@@ -132,52 +98,23 @@ function download(text: string, name: string, type = "text/plain") {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function Chart({
-  data,
-  second = [],
-  height = 140,
-  label,
-}: {
-  data: number[];
-  second?: number[];
-  height?: number;
-  label: string;
-}) {
-  const { token } = theme.useToken();
-  return (
-    <Sparkline
-      data={data}
-      data2={second}
-      height={height}
-      stroke={token.colorPrimary}
-      stroke2={token.colorTextTertiary}
-      valueMax={null}
-      showTooltip
-      showLegend={false}
-      fillOpacity={0.24}
-      name1={label}
-      yFormatter={bytes}
-    />
-  );
-}
 export default function Dashboard({
   p,
   run,
   navigate,
   reload,
+  working,
 }: {
   p: Page;
+  working: boolean;
   run: Run;
   navigate: (tab: string) => void;
   reload: () => Promise<Page>;
 }) {
   const { message, modal } = App.useApp();
-  const { token } = theme.useToken();
-  const isMobile = !Grid.useBreakpoint().md;
   const [samples, setSamples] = useState<Metrics[]>([]),
     [failure, setFailure] = useState(""),
     [window, setWindow] = useState(""),
-    [showIP, setShowIP] = useState(false),
     [config, setConfig] = useState(""),
     [configError, setConfigError] = useState(""),
     [keepMachine, setKeepMachine] = useState(true),
@@ -207,11 +144,6 @@ export default function Dashboard({
       clearInterval(timer);
     };
   }, []);
-  const m = samples.at(-1) || empty;
-  const series = (key: keyof Metrics) => samples.map((s) => Number(s[key]));
-  const mem = samples.map((s) => percent(s.memory, s.memoryTotal)),
-    swap = samples.map((s) => percent(s.swap, s.swapTotal)),
-    disk = samples.map((s) => percent(s.disk, s.diskTotal));
   const openConfig = async () => {
     setWindow("config");
     setConfig("");
@@ -267,246 +199,10 @@ export default function Dashboard({
     });
     return false;
   };
-  const active = p.Service.trim() === "active";
-  const version = p.Version.match(/\d+\.\d+\.\d+/)?.[0] || "не установлен";
   return (
     <div className="index-page is-dark">
-      <div className="ov-page">
-        {p.VPNWarning && <Alert showIcon type="warning" className="section-gap" title={p.VPNWarning} action={<Button size="small" onClick={() => navigate("subscriptions")}>Подключения</Button>} />}
-        <div className="ov-bar">
-          <div className={"ov-state " + (active ? "ov-state-running" : "")}>
-            <span className="ov-state-dot" />
-            Xray · {active ? "Запущен" : "Остановлен"}
-            <Button type="text" size="small" onClick={() => setWindow("setup")}>
-              v{version}
-            </Button>
-          </div>
-          <button
-            type="button"
-            className="ov-panel-version ov-mono"
-            onClick={() => setWindow("update")}
-          >
-            {p.PanelVersion}
-          </button>
-          {p.PanelUpdate.Available && <Tag color="var(--ng-accent)">Обновление</Tag>}
-          <div className="ov-bar-actions">
-            <Button
-              size={isMobile ? "small" : "middle"}
-              color="primary"
-              variant="outlined"
-              aria-label={active ? "Перезапуск" : "Запустить"}
-              icon={<ReloadOutlined />}
-              onClick={() => (active ? control("restart") : doRun("start"))}
-            >
-              {isMobile ? undefined : active ? "Перезапуск" : "Запустить"}
-            </Button>
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="Стоп"
-              icon={<PoweroffOutlined />}
-              onClick={() => control("stop")}
-              disabled={!active}
-            >
-              {isMobile ? undefined : "Стоп"}
-            </Button>
-            <span className="ov-bar-sep" />
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="Логи"
-              icon={<BarsOutlined />}
-              onClick={() => {
-                setWindow("logs");
-
-              }}
-            >
-              {isMobile ? undefined : "Логи"}
-            </Button>
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="Конфигурация"
-              icon={<ControlOutlined />}
-              onClick={() => void openConfig()}
-            >
-              {isMobile ? undefined : "Конфигурация"}
-            </Button>
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="Бэкап и восстановление"
-              icon={<CloudServerOutlined />}
-              onClick={() => setWindow("backup")}
-            >
-              {isMobile ? undefined : "Бэкап и восстановление"}
-            </Button>
-            <span className="ov-bar-sep" />
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="История системы"
-              icon={<AreaChartOutlined />}
-              onClick={() => setWindow("history")}
-            >
-              {isMobile ? undefined : "История системы"}
-            </Button>
-            <Button
-              size={isMobile ? "small" : "middle"}
-              type="text"
-              aria-label="Метрики Xray"
-              icon={<ArrowUpOutlined />}
-              onClick={() => setWindow("metrics")}
-            >
-              {isMobile ? undefined : "Метрики Xray"}
-            </Button>
-          </div>
-        </div>
-        <hr className="ov-rule" />
-        {failure && <Alert type="warning" title={failure} />}
-        {!samples.length && !failure ? (
-          <Spin />
-        ) : (
-          <>
-            <div className="ov-vitals">
-              <VitalTile
-                icon={<DashboardOutlined />}
-                label="ЦП"
-                percent={m.cpu}
-                statusColor={token.colorPrimary}
-                detail={`${CPUFormatter.cpuCoreFormat(m.physicalCores || m.cores)} / ${m.cores}T · ${CPUFormatter.cpuSpeedFormat(m.cpuMHz)}`}
-                footLeft={`Среднее ${mean(series("cpu")).toFixed(0)}%`}
-                footRight={`Пик ${peak(series("cpu")).toFixed(0)}%`}
-                data={series("cpu")}
-                isMobile={isMobile}
-              />
-              <VitalTile
-                icon={<DatabaseOutlined />}
-                label="Память"
-                percent={percent(m.memory, m.memoryTotal)}
-                statusColor={token.colorPrimary}
-                detail={`${bytes(m.memory)} / ${bytes(m.memoryTotal)}`}
-                footLeft={`Среднее ${mean(mem).toFixed(0)}%`}
-                footRight={`Пик ${peak(mem).toFixed(0)}%`}
-                data={mem}
-                isMobile={isMobile}
-              />
-              <VitalTile
-                icon={<SwapOutlined />}
-                label="Подкачка"
-                percent={percent(m.swap, m.swapTotal)}
-                statusColor={token.colorPrimary}
-                detail={`${bytes(m.swap)} / ${bytes(m.swapTotal)}`}
-                footLeft={`Среднее ${mean(swap).toFixed(1)}%`}
-                footRight={`Пик ${peak(swap).toFixed(0)}%`}
-                data={swap}
-                isMobile={isMobile}
-              />
-              <VitalTile
-                icon={<HddOutlined />}
-                label="Диск"
-                percent={percent(m.disk, m.diskTotal)}
-                statusColor={token.colorPrimary}
-                detail={`${bytes(m.disk)} / ${bytes(m.diskTotal)}`}
-                footLeft={`Свободно ${bytes(m.diskTotal - m.disk)}`}
-                footRight={`Среднее ${mean(disk).toFixed(1)}%`}
-                data={disk}
-                isMobile={isMobile}
-              />
-            </div>
-            <div className="ov-mid">
-              <ThroughputCard
-                status={{
-                  netIO: { up: m.upload, down: m.download },
-                  netTraffic: { sent: m.sent, recv: m.received },
-                  tcpCount: m.tcp,
-                  udpCount: m.udp,
-                }}
-                up={series("upload")}
-                down={series("download")}
-                labels={samples.map((s) =>
-                  new Date(s.time).toLocaleTimeString("ru-RU"),
-                )}
-                isMobile={isMobile}
-              />
-              <ConnectionsCard
-                status={{
-                  netIO: { up: m.upload, down: m.download },
-                  netTraffic: { sent: m.sent, recv: m.received },
-                  tcpCount: m.tcp,
-                  udpCount: m.udp,
-                }}
-                tcp={series("tcp")}
-                udp={series("udp")}
-                labels={samples.map((s) =>
-                  new Date(s.time).toLocaleTimeString("ru-RU"),
-                )}
-                isMobile={isMobile}
-              />
-            </div>
-            <Card hoverable styles={{ body: { padding: 0 } }}>
-              <div className="ov-strip-grid">
-                <div className="ov-strip-cell">
-                  <div className="ov-kicker ov-kicker-icon">
-                    <ClockCircleOutlined />
-                    Время работы
-                  </div>
-                  <div className="ov-strip-split">
-                    <div>
-                      <div className="ov-strip-sub">Xray</div>
-                      <div className="ov-strip-value">
-                        {active ? duration(m.xrayUptime) : "—"}
-                      </div>
-                    </div>
-                    <span className="ov-strip-split-sep" />
-                    <div>
-                      <div className="ov-strip-sub">OS</div>
-                      <div className="ov-strip-value">{duration(m.uptime)}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="ov-strip-cell">
-                  <div className="ov-kicker ov-kicker-icon">
-                    <DatabaseOutlined />
-                    Панель
-                  </div>
-                  <div className="ov-strip-split">
-                    <div>
-                      <div className="ov-strip-sub">Память</div>
-                      <div className="ov-strip-value">
-                        {bytes(m.panelMemory)}
-                      </div>
-                    </div>
-                    <span className="ov-strip-split-sep" />
-                    <div>
-                      <div className="ov-strip-sub">Потоки</div>
-                      <div className="ov-strip-value">{m.threads}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="ov-strip-cell">
-                  <div className="ov-kicker ov-kicker-icon">
-                    <GlobalOutlined />
-                    IP-адреса сервера
-                    <Button
-                      size="small"
-                      type="text"
-                      aria-label="Показать или скрыть адрес"
-                      icon={showIP ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-                      onClick={() => setShowIP(!showIP)}
-                    />
-                  </div>
-                  <div className={"ov-ip " + (showIP ? "" : "ip-hidden")}>
-                    <div className="ov-mono">{p.DetectedNetwork.address}</div>
-                    <div className="ov-mono ov-ip-v6">{m.interface}</div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </>
-        )}
-      </div>
-      <Modal
+      <HomeOverview run={run} working={working} p={p} samples={samples} failure={failure} navigate={navigate} onTool={(tool) => { if (tool === "config") void openConfig(); else if (tool === "start") doRun("start"); else if (tool === "stop" || tool === "restart") control(tool); else setWindow(tool); }} />
+      <Modal className="home-dialog"
         open={window === "backup"}
         onCancel={() => setWindow("")}
         footer={null}
@@ -562,7 +258,7 @@ export default function Dashboard({
           бекапа.
         </div>
       </Modal>
-      <Modal
+      <Modal className="home-dialog"
         open={window === "config"}
         onCancel={() => setWindow("")}
         title="Конфигурация Xray"
@@ -604,110 +300,7 @@ export default function Dashboard({
           <Spin />
         )}
       </Modal>
-      <LogModal open={window === "logs"} onClose={() => setWindow("")} />
-      <Modal
-        open={window === "history"}
-        onCancel={() => setWindow("")}
-        title="История системы"
-        width={900}
-        footer={null}
-      >
-        <Typography.Paragraph type="secondary">
-          Последние {samples.length} измерений системы.
-        </Typography.Paragraph>
-        {[
-          ["ЦП", series("cpu")],
-          ["Память", mem],
-          ["Подкачка", swap],
-          ["Диск", disk],
-        ].map(([label, data]) => (
-          <Card
-            key={String(label)}
-            size="small"
-            title={String(label)}
-            className="section-gap"
-          >
-            <Chart data={data as number[]} height={140} label={String(label)} />
-          </Card>
-        ))}
-      </Modal>
-      <Modal
-        open={window === "setup" || (p.Wizard && window === "")}
-        onCancel={() => {
-          setWindow("");
-          if (p.Wizard) doRun("setup-skip");
-        }}
-        title="Настройка шлюза"
-        width={1000}
-        footer={null}
-      >
-        <Overview
-          p={p}
-          run={run}
-          navigate={(tab) => {
-            setWindow("");
-            if (tab === "backup") setWindow("backup");
-            else navigate(tab);
-          }}
-        />
-      </Modal>
-      <Modal
-        open={window === "metrics"}
-        onCancel={() => setWindow("")}
-        title="Метрики Xray"
-        width={800}
-        footer={null}
-      >
-        <div className="dash-process-grid">
-          {[
-            ["PID", m.xrayPID || "—"],
-            ["Память процесса", bytes(m.xrayMemory)],
-            ["Потоки", m.xrayThreads],
-            ["Время работы", active ? duration(m.xrayUptime) : "—"],
-          ].map(([label, value]) => (
-            <Card size="small" key={label}>
-              <div className="ov-kicker">{label}</div>
-              <div className="ov-strip-value">{value}</div>
-            </Card>
-          ))}
-        </div>
-        <Card className="section-gap" size="small" title="Память процесса Xray">
-          <Chart
-            data={series("xrayMemory")}
-            height={186}
-            label="История памяти процесса Xray"
-          />
-        </Card>
-      </Modal>
-      <Modal
-        open={window === "update"}
-        onCancel={() => setWindow("")}
-        title="Обновление NGPanel"
-        footer={null}
-      >
-        <Typography.Paragraph>
-          Установлена {p.PanelVersion}
-        </Typography.Paragraph>
-        <Typography.Paragraph>{p.PanelUpdate.Message}</Typography.Paragraph>
-        <Space wrap>
-          <Button onClick={() => doRun("panel-update-check")}>
-            Проверить обновления
-          </Button>
-          <Button
-            type="primary"
-            disabled={!p.PanelUpdate.Available}
-            onClick={() => doRun("panel-update-install")}
-          >
-            Установить обновление
-          </Button>
-          <Button
-            disabled={!p.PanelUpdate.CanRollback}
-            onClick={() => doRun("panel-update-rollback")}
-          >
-            Откатить панель
-          </Button>
-        </Space>
-      </Modal>
+      <SystemHistory open={window === "history"} onClose={() => setWindow("")} samples={samples} failure={failure}/>
     </div>
   );
 }

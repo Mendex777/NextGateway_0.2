@@ -573,7 +573,7 @@ export default function Sparkline(props: SparklineProps) {
     const opts: uPlot.Options = {
       width: container.clientWidth || 600,
       height,
-      padding: [8, 8, showAxes ? 0 : 2, showAxes ? 0 : 2],
+      padding: [8, showAxes ? 30 : 8, showAxes ? 0 : 2, showAxes ? 0 : 2],
       legend: { show: false },
       cursor: {
         show: showTooltip,

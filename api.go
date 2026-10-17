@@ -26,16 +26,29 @@ func newRouter() http.Handler {
 	})
 	router.GET("/api/page", func(c *gin.Context) {
 		tab := c.Query("tab")
-		if tab != "" && tab != "status" && tab != "subscriptions" && tab != "devices" && tab != "routing" && tab != "gateway" && tab != "diagnostics" && tab != "backup" {
+		if tab != "" && tab != "status" && tab != "subscriptions" && tab != "devices" && tab != "routing" && tab != "gateway" && tab != "diagnostics" && tab != "backup" && tab != "settings" {
 			c.JSON(400, gin.H{"error": "РќРµРёР·РІРµСЃС‚РЅР°СЏ СЃС‚СЂР°РЅРёС†Р°"})
 			return
 		}
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, pageData(c.Request))
 	})
+	router.GET("/api/map/devices", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, gin.H{"Devices": devices()}) })
+	router.GET("/api/component-updates", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, componentUpdatesSnapshot()) })
+	router.GET("/api/service-health", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, readServiceHealth()) })
+	router.GET("/api/traffic", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, trafficSnapshot()) })
 	router.GET("/api/connections", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
-		c.JSON(200, connectionSnapshot())
+		if c.Query("raw") == "1" {
+			raw, err := rawConnectionSnapshot()
+			if err != nil {
+				c.JSON(503, gin.H{"Events": []ConnectionEvent{}, "Message": "Снимок соединений недоступен"})
+				return
+			}
+			c.Data(200, "application/json", raw)
+			return
+		}
+		c.JSON(200, connectionSnapshotForView(c.Query("active") == "1"))
 	})
 	router.GET("/api/dashboard", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")

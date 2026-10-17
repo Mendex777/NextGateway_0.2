@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -189,12 +190,33 @@ func collectConnections() error {
 	}
 }
 
-func connectionSnapshot() ConnectionSnapshot {
-	result := ConnectionSnapshot{Events: []ConnectionEvent{}}
-	path := "/run/ngpanel-connections/events.json"
+func connectionSnapshotPath() string {
 	if os.Getenv("NG_REVIEW") == "1" {
-		path = filepath.Join(stateDir(), "connections.json")
+		return filepath.Join(stateDir(), "connections.json")
 	}
+	return "/run/ngpanel-connections/events.json"
+}
+
+// Internal collectors need the recorded tuples, without UI labels or a second JSON decode.
+func rawConnectionSnapshot() ([]byte, error) {
+	f, err := os.Open(connectionSnapshotPath())
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 4*1024*1024+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 4*1024*1024 {
+		return nil, fmt.Errorf("connection snapshot too large")
+	}
+	return raw, nil
+}
+func connectionSnapshot() ConnectionSnapshot { return connectionSnapshotForView(false) }
+func connectionSnapshotForView(activeOnly bool) ConnectionSnapshot {
+	result := ConnectionSnapshot{Events: []ConnectionEvent{}}
+	path := connectionSnapshotPath()
 	f, e := os.Open(path)
 	if e != nil {
 		result.Message = "Сборщик журнала соединений ещё не запущен"
@@ -213,6 +235,15 @@ func connectionSnapshot() ConnectionSnapshot {
 	}
 	if len(result.Events) > connectionLimit {
 		result.Events = result.Events[len(result.Events)-connectionLimit:]
+	}
+	if activeOnly {
+		active := make([]ConnectionEvent, 0)
+		for _, event := range result.Events {
+			if event.Network == "tcp" && event.Inbound == "tproxy-in" && event.TCPState == "active" {
+				active = append(active, event)
+			}
+		}
+		result.Events = active
 	}
 	names := map[string]string{}
 	for _, d := range devices() {

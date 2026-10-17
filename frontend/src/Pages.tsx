@@ -1,10 +1,9 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   App,
   Alert,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Form,
   Input,
@@ -12,11 +11,8 @@ import {
   Modal,
   Select,
   Space,
-  Statistic,
-  Steps,
   Switch,
   Table,
-  Tag,
   Typography,
   Upload,
 } from "antd";
@@ -27,7 +23,6 @@ import {
   ReloadOutlined,
   UploadOutlined,
 } from "./icons";
-import { action, getJSON } from "./api";
 import {
   date,
   Editor,
@@ -37,316 +32,7 @@ import {
   type Run,
 } from "./common";
 import type { Device, Page } from "./types";
-export function Overview({
-  p,
-  run,
-  navigate,
-}: {
-  p: Page;
-  run: Run;
-  navigate: (tab: string) => void;
-}) {
-  const [wizard, setWizard] = useState(p.Wizard),
-    [stage, setStage] = useState(-1),
-    [progress, setProgress] = useState(""),
-    [setupError, setSetupError] = useState("");
-  const cancelled = useRef(false);
-  const installComponents = async () => {
-    cancelled.current = false;
-    setSetupError("");
-    try {
-      for (const [i, name] of [
-        "install",
-        "dependencies",
-        "geodata",
-      ].entries()) {
-        if (cancelled.current) break;
-        setStage(i);
-        const result = await action(name, "status");
-        let done = false;
-        const until = Date.now() + 15 * 60 * 1000;
-        while (!done && Date.now() < until) {
-          const status = await getJSON<{
-            Done: boolean;
-            Message: string;
-            State: string;
-          }>(
-            "/operation-status?" +
-              new URLSearchParams({ action: name, since: result.since }),
-          );
-          setProgress(status.Message);
-          if (status.State === "error") throw new Error(status.Message);
-          done = status.Done;
-          if (!done) await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
-        if (!done)
-          throw new Error(
-            "Операция выполняется дольше ожидаемого. Проверьте диагностику.",
-          );
-      }
-      setStage(3);
-    } catch (e) {
-      setSetupError(e instanceof Error ? e.message : "Ошибка установки");
-      setStage(-1);
-    }
-  };
-  const doRun = (name: string) => void run(name).catch(() => {});
-  return (
-    <>
-      <Card
-        title={p.GatewayReady ? "Шлюз работает" : "Шлюз требует настройки"}
-        extra={
-          <Button onClick={() => setWizard(!wizard)}>Мастер настройки</Button>
-        }
-      >
-        <Descriptions
-          column={{ xs: 1, sm: 3 }}
-          items={[
-            {
-              key: "gateway",
-              label: "Шлюз и DNS устройств",
-              children: p.DetectedNetwork.address,
-            },
-            {
-              key: "router",
-              label: "Роутер",
-              children: p.DetectedNetwork.router,
-            },
-            {
-              key: "default",
-              label: "Маршрут по умолчанию",
-              children:
-                p.Mode === "direct"
-                  ? "Провайдер"
-                  : p.Mode === "proxy"
-                    ? "Выбранный VPN"
-                    : "Группа VPN",
-            },
-          ]}
-        />
-      </Card>
-      {wizard && (
-        <Card
-          className="section-gap"
-          title="Первичная настройка"
-          extra={
-            <Button
-              onClick={() => {
-                cancelled.current = true;
-                setWizard(false);
-                doRun("setup-skip");
-              }}
-            >
-              Пропустить мастер
-            </Button>
-          }
-        >
-          <Steps
-            current={stage < 0 ? 0 : stage}
-            items={[
-              { title: "Xray" },
-              { title: "Компоненты шлюза" },
-              { title: "Geo-базы" },
-              { title: "Данные и запуск" },
-            ]}
-          />
-          <Space className="wizard-actions" wrap>
-            <Button
-              type="primary"
-              loading={stage >= 0 && stage < 3}
-              onClick={() => void installComponents()}
-            >
-              Установить компоненты
-            </Button>
-            <Button onClick={() => navigate("backup")}>
-              Восстановить бекап
-            </Button>
-            <Button onClick={() => navigate("subscriptions")}>
-              Добавить подписку
-            </Button>
-          </Space>
-          {progress && (
-            <Alert
-              className="section-gap"
-              type={setupError ? "error" : "info"}
-              title={setupError || progress}
-            />
-          )}
-          <Typography.Paragraph className="section-gap">
-            После загрузки подписок или бекапа выберите VPN и примените
-            конфигурацию в верхнем блоке.
-          </Typography.Paragraph>
-        </Card>
-      )}
-      <div className="dashboard-cards">
-        {[
-          { title: "Подписки", value: p.SourceCount, tab: "subscriptions" },
-          { title: "Подключения", value: p.NodeCount, tab: "subscriptions" },
-          { title: "Правила", value: p.RuleCount, tab: "routing" },
-          { title: "Устройства", value: p.DeviceCount, tab: "devices" },
-        ].map((item) => (
-          <Card key={item.title} hoverable onClick={() => navigate(item.tab)}>
-            <Statistic title={item.title} value={item.value} />
-          </Card>
-        ))}
-      </div>
-      <Card title="Компоненты">
-        <Table
-          rowKey="Name"
-          size="small"
-          pagination={false}
-          dataSource={p.Components || []}
-          scroll={{ x: 650 }}
-          columns={[
-            { title: "Компонент", dataIndex: "Name" },
-            {
-              title: "Состояние",
-              render: (_, c) => (
-                <Space>
-                  <Tag
-                    color={
-                      c.Class === "good"
-                        ? "green"
-                        : c.Class === "bad"
-                          ? "red"
-                          : c.Class === "warn"
-                            ? "orange"
-                            : undefined
-                    }
-                  >
-                    {c.Class === "good"
-                      ? "Готово"
-                      : c.Class === "bad"
-                        ? "Ошибка"
-                        : c.Class === "warn"
-                          ? "Требует настройки"
-                          : "Сведения"}
-                  </Tag>
-                  {c.State}
-                  {c.Update && (
-                    <Button
-                      size="small"
-                      type="primary"
-                      title={c.Hint}
-                      onClick={() => doRun(c.Action)}
-                    >
-                      {c.Update}
-                    </Button>
-                  )}
-                  {c.Name === "Панель" && p.PanelUpdate.Available && (
-                    <Tag color="var(--ng-accent)">Доступно обновление</Tag>
-                  )}
-                </Space>
-              ),
-            },
-            {
-              title: "Действие",
-              width: 200,
-              render: (_, c) =>
-                c.Link ? (
-                  <Button
-                    onClick={() =>
-                      navigate(
-                        new URLSearchParams(c.Link.split("?")[1]).get("tab") ||
-                          "gateway",
-                      )
-                    }
-                  >
-                    {c.Button}
-                  </Button>
-                ) : c.Action === "apply" ||
-                  (c.Class === "good" &&
-                    ["start", "dependencies"].includes(c.Action)) ? null : (
-                  <Button
-                    title={c.Hint}
-                    onClick={() =>
-                      doRun(
-                        c.Action === "install" && c.Class === "good"
-                          ? "xray-update-check"
-                          : c.Action,
-                      )
-                    }
-                  >
-                    {c.Action === "install" && c.Class === "good"
-                      ? "Проверить обновления"
-                      : c.Button}
-                  </Button>
-                ),
-            },
-          ]}
-        />
-      </Card>
-      <Collapse
-        className="section-gap"
-        items={[
-          {
-            key: "manage",
-            label: "Управление и обновления",
-            children: (
-              <Space direction="vertical" style={{ width: "100%" }}>
-                <div className="status-actions">
-                  <Button onClick={() => doRun("install")}>
-                    Установить / обновить Xray
-                  </Button>
-                  <Button onClick={() => doRun("check")}>
-                    Проверить конфигурацию
-                  </Button>
-                  <Button onClick={() => doRun("start")}>Запустить Xray</Button>
-                  <Button onClick={() => doRun("stop")}>Остановить Xray</Button>
-                  <Button onClick={() => doRun("rollback")}>
-                    Откатить конфигурацию
-                  </Button>
-                </div>
-                <Card title={"Панель " + p.PanelVersion}>
-                  <Typography.Paragraph>
-                    {p.PanelUpdate.Message}
-                  </Typography.Paragraph>
-                  <Space wrap>
-                    <Button onClick={() => doRun("panel-update-check")}>
-                      Проверить обновления
-                    </Button>
-                    <Button
-                      disabled={!p.PanelUpdate.Available}
-                      onClick={() => doRun("panel-update-install")}
-                    >
-                      Установить обновление
-                    </Button>
-                    <Button
-                      disabled={!p.PanelUpdate.CanRollback}
-                      onClick={() => doRun("panel-update-rollback")}
-                    >
-                      Откатить панель
-                    </Button>
-                  </Space>
-                </Card>
-              </Space>
-            ),
-          },
-          {
-            key: "vm",
-            label: "Сведения о ВМ",
-            children: (
-              <>
-                <Descriptions
-                  items={[
-                    {
-                      key: "uptime",
-                      label: "Время работы",
-                      children: p.Uptime,
-                    },
-                  ]}
-                />
-                <JsonDetails value={p.Routes} />
-                <JsonDetails value={p.Memory} />
-                <JsonDetails value={p.Version} />
-              </>
-            ),
-          },
-        ]}
-      />
-    </>
-  );
-}
+import "./gateway.css";
 export function Devices({ p, run }: { p: Page; run: Run }) {
   const [editing, setEditing] = useState<Device | null | undefined>();
   return (
@@ -440,7 +126,8 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
   const doRun = (name: string) => void run(name).catch(() => {});
   const [networkForm] = Form.useForm();
   const networkMode = Form.useWatch("mode", networkForm);
-  return <>
+  return <div className="gateway-settings-page">
+    <h1>Сеть и DNS</h1>
     <Card title="Настройки сети ВМ">
       <Descriptions items={[
         {key:"address",label:"Текущий IP",children:p.DetectedNetwork.address},
@@ -542,34 +229,7 @@ export function Gateway({ p, run }: { p: Page; run: Run }) {
           </Space>
         </Form>
     </Card>
-  </>;
-}
-export function Diagnostics({ p, run }: { p: Page; run: Run }) {
-  return (
-    <Card
-      title="Диагностика"
-      extra={
-        <Space wrap>
-          <Button onClick={() => void run("logs").catch(() => {})}>
-            Обновить журнал Xray
-          </Button>
-          <Button onClick={() => void run("check").catch(() => {})}>
-            Проверить конфигурацию
-          </Button>
-        </Space>
-      }
-    >
-      <Typography.Title level={5}>Последняя операция</Typography.Title>
-      <Alert
-        type={p.Runtime.State === "error" ? "error" : "info"}
-        title={p.Runtime.Message || "Операций пока нет"}
-      />
-      <Typography.Title level={5}>Журнал Xray</Typography.Title>
-      <JsonDetails value={p.Service || "Журнал ещё не загружен"} />
-      <Typography.Title level={5}>Политики маршрутизации ВМ</Typography.Title>
-      <JsonDetails value={p.Routes} />
-    </Card>
-  );
+  </div>;
 }
 export function Backup({ reload }: { reload: () => Promise<Page> }) {
   const { message, modal } = App.useApp();
