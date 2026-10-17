@@ -71,10 +71,8 @@ def snapshot(destination):
     (destination/'panel.db').chmod(0o600)
 
 def sync_connections(tag):
-    if version(tag)>=(0,3,40):run(['/usr/bin/python3',str(APP/'control.py'),'health-install'])
-    elif HEALTH_UNIT.exists():run(['systemctl','disable','--now','ngpanel-health.service'])
-    if version(tag)>=(0,3,40):run(['/usr/bin/python3',str(APP/'control.py'),'traffic-install'])
-    elif TRAFFIC_UNIT.exists():run(['systemctl','disable','--now','ngpanel-traffic.service'])
+    if version(tag)<(0,3,40) and HEALTH_UNIT.exists():run(['systemctl','disable','--now','ngpanel-health.service'])
+    if version(tag)<(0,3,40) and TRAFFIC_UNIT.exists():run(['systemctl','disable','--now','ngpanel-traffic.service'])
     if version(tag)>=(0,3,39):
         run(['/usr/bin/python3',str(APP/'control.py'),'connections-install'])
     elif CONNECTIONS_UNIT.exists():

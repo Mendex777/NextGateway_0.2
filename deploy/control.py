@@ -437,6 +437,12 @@ def network_revert():
     runtime.update(State='ok',Action='network-revert',Network='reverted',Message='Изменение сети автоматически отменено: подтверждение не получено',Updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
     atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
 
+def install_collectors():
+    # v0.3.39's updater invokes this fixed operation after replacing control.py.
+    install_connections()
+    install_health()
+    install_traffic()
+
 if __name__ == '__main__':
     if len(sys.argv)>1:
         if sys.argv[1]=='network-revert':
@@ -448,7 +454,7 @@ if __name__ == '__main__':
         elif sys.argv[1]=='traffic-install':
             install_traffic()
         elif sys.argv[1]=='connections-install':
-            install_connections()
+            install_collectors()
         elif sys.argv[1]=='gateway-restore':
             restore_gateway_on_boot()
         else: raise ValueError('Unknown fixed operation')

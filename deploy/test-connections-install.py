@@ -18,6 +18,11 @@ class CollectorInstallTests(unittest.TestCase):
                 self.assertTrue(all('xray' not in arg for command in commands for arg in command))
                 run.reset_mock();c.install_connections()
                 self.assertNotIn(['systemctl','daemon-reload'],[call.args[0] for call in run.call_args_list])
+    def test_legacy_update_operation_installs_all_collectors(self):
+        with patch.object(c,'install_connections') as connections,patch.object(c,'install_health') as health,patch.object(c,'install_traffic') as traffic:
+            c.install_collectors()
+        connections.assert_called_once_with();health.assert_called_once_with();traffic.assert_called_once_with()
+
     def test_web_user_cannot_provision_service(self):
         with patch.object(c.os,'geteuid',return_value=999),patch.object(c,'run') as run:
             with self.assertRaises(ValueError):c.install_connections()

@@ -40,8 +40,7 @@ class UpdateTests(unittest.TestCase):
     def test_traffic_upgrade_and_rollback(self):
         with patch.object(u,'run') as run:
             u.sync_connections('v0.3.40')
-            self.assertIn(['/usr/bin/python3',str(self.app/'control.py'),'traffic-install'],[call.args[0] for call in run.call_args_list])
-            self.assertIn(['/usr/bin/python3',str(self.app/'control.py'),'health-install'],[call.args[0] for call in run.call_args_list])
+            run.assert_called_once_with(['/usr/bin/python3',str(self.app/'control.py'),'connections-install'])
             run.reset_mock();(self.root/'health.service').write_text('installed');(self.root/'traffic.service').write_text('installed')
             u.sync_connections('v0.3.39')
             self.assertIn(['systemctl','disable','--now','ngpanel-traffic.service'],[call.args[0] for call in run.call_args_list])
