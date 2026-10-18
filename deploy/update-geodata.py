@@ -53,6 +53,7 @@ def update():
                 if result.returncode:raise ValueError('Новые geo-базы несовместимы с применённой или предыдущей конфигурацией; старые базы сохранены')
             finally:candidate.unlink(missing_ok=True)
         (stage/'source.txt').write_text('Loyalsoldier/v2ray-rules-dat '+release['tag_name']+'; SHA-256 verified; '+datetime.datetime.now(datetime.timezone.utc).isoformat())
+        (stage/'source.txt').chmod(0o644)
         if CURRENT.is_symlink():previous=CURRENT.resolve()
         elif CURRENT.exists():
             previous=VERSIONS/'initial-bundle'

@@ -19,7 +19,7 @@ def fields(data):
         else:raise ValueError('Unsupported protobuf field')
         yield tag>>3,value
 source_dir=pathlib.Path(sys.argv[1]) if len(sys.argv)>1 else pathlib.Path('/opt/3xui-lab/x-ui/bin')
-target=pathlib.Path(sys.argv[2]) if len(sys.argv)>2 else pathlib.Path('/usr/local/share/ngpanel-geodata');target.mkdir(exist_ok=True)
+target=pathlib.Path(sys.argv[2]) if len(sys.argv)>2 else pathlib.Path('/usr/local/share/ngpanel-geodata');target.mkdir(exist_ok=True);target.chmod(0o755)
 index=[]
 for kind in ('geosite','geoip'):
     source=source_dir/(kind+'.dat')
@@ -38,5 +38,9 @@ for kind in ('geosite','geoip'):
                     entries.append(str(ipaddress.ip_address(item[1]))+'/'+str(item.get(2,0)))
         index.append({'Kind':kind,'Code':code,'Entries':entries,'Count':len(entries)})
 (target/'index.json').write_text(json.dumps(index,ensure_ascii=False))
-if len(sys.argv)==1:(target/'source.txt').write_text('3x-ui v3.9.0 verified release bundle; installed datasets\n')
+# Installer uses umask 077; datasets and their index must be readable by both services.
+for name in ('geoip.dat','geosite.dat','index.json'):(target/name).chmod(0o644)
+if len(sys.argv)==1:
+    (target/'source.txt').write_text('3x-ui v3.9.0 verified release bundle; installed datasets\n')
+    (target/'source.txt').chmod(0o644)
 print('Indexed',len(index),'categories')

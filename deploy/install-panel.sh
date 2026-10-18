@@ -291,6 +291,10 @@ if not pathlib.Path('/usr/local/bin/xray').exists():
 run(['/usr/local/bin/xray','version'])
 geo=pathlib.Path('/usr/local/share/ngpanel-geodata')
 if not all((geo/name).is_file() for name in ('geoip.dat','geosite.dat')):run(['python3','/opt/ngpanel/update-geodata.py'])
+# Rebuild the index and repair restrictive permissions from earlier installations.
+run(['python3','/opt/ngpanel/index-geodata.py',str(geo),str(geo)])
+if (geo/'source.txt').is_file():(geo/'source.txt').chmod(0o644)
+run(['systemctl','restart','ngpanel'])
 healthy()
 database='/var/lib/ngpanel/db/panel.db'
 with sqlite3.connect(database) as db:

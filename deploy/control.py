@@ -437,8 +437,21 @@ def network_revert():
     runtime.update(State='ok',Action='network-revert',Network='reverted',Message='Изменение сети автоматически отменено: подтверждение не получено',Updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
     atomic(ROOT/'runtime.json',json.dumps(runtime,ensure_ascii=False))
 
+GEODATA = pathlib.Path('/usr/local/share/ngpanel-geodata')
+
+def repair_geodata():
+    if os.geteuid() != 0: raise ValueError('Geo repair requires root')
+    if not all((GEODATA/name).is_file() for name in ('geoip.dat','geosite.dat')):
+        run(['python3','/opt/ngpanel/update-geodata.py'],timeout=180)
+    # Existing updaters invoke connections-install after replacing all app files.
+    # Re-index local verified datasets to repair missing/private indices without
+    # replacing datasets or changing the saved routing configuration.
+    run(['python3','/opt/ngpanel/index-geodata.py',str(GEODATA),str(GEODATA)],timeout=120)
+    if (GEODATA/'source.txt').is_file(): (GEODATA/'source.txt').chmod(0o644)
+
 def install_collectors():
-    # v0.3.39's updater invokes this fixed operation after replacing control.py.
+    # Released updaters invoke this operation before starting the new panel.
+    repair_geodata()
     install_connections()
     install_health()
     install_traffic()

@@ -72,6 +72,9 @@ class SetupTests(unittest.TestCase):
             # Empty bootstrap DNS inherits the VM resolver instead of pinning the detected router.
             if not existing:self.assertEqual(settings['dns_direct'],'')
             self.assertEqual(len(posts),0 if existing else 1)
+            geo=str(path('/usr/local/share/ngpanel-geodata'))
+            self.assertIn(['python3',str(path('/opt/ngpanel/index-geodata.py')),geo,geo],calls)
+            self.assertIn(['systemctl','restart','ngpanel'],calls)
             if existing:self.assertEqual(path('/etc/ngpanel/config.json').read_text(),'keep applied config')
             if broken:self.assertTrue(any(a[-1].endswith('install-xray.py') for a in calls));self.assertTrue(any(a[-1].endswith('update-geodata.py') for a in calls))
     def test_fresh_detects_network_and_applies(self):self.exercise()
