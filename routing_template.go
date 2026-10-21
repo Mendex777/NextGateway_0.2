@@ -180,6 +180,8 @@ func importRoutes(t routeTemplate, mapping, sources map[string]string, replace, 
 			return 0, e
 		}
 	}
+	deviceLockRecord.Lock()
+	defer deviceLockRecord.Unlock()
 	tx, e := db.Begin()
 	if e != nil {
 		return 0, e
@@ -199,6 +201,9 @@ func importRoutes(t routeTemplate, mapping, sources map[string]string, replace, 
 		if _, e = tx.Exec("DELETE FROM rules"); e != nil {
 			return 0, e
 		}
+	}
+	if e = detachInvalidDeviceRoutes(tx); e != nil {
+		return 0, e
 	}
 	for _, r := range prepared {
 		result, e := tx.Exec("INSERT INTO rules(priority,name,kind,value,target) SELECT COALESCE(MAX(priority),0)+1,?,?,?,? FROM rules", r.Name, r.Kind, r.Value, r.Target)

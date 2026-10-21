@@ -424,7 +424,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 		err := requestPanelUpdate(strings.TrimPrefix(r.FormValue("action"), "panel-update-"))
 		return true, "Задание обновления панели поставлено в очередь", err
 	case "component-updates-check":
-        requestComponentUpdateCheck();return true,"Проверка обновлений запущена",nil
+		requestComponentUpdateCheck()
+		return true, "Проверка обновлений запущена", nil
 	case "xray-update-check":
 		message, err := checkCoreUpdate()
 		return true, message, err
@@ -560,6 +561,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 			_, e = db.Exec("INSERT INTO nodes(id,source_id,uri,name,host,port,transport,security) VALUES("+nextNodeID+",?,?,?,?,?,?,?)", sid, uri, n.Name, n.Host, n.Port, n.Transport, n.Security)
 		}
 	case "rule-add", "rule-update":
+		deviceLockRecord.Lock()
+		defer deviceLockRecord.Unlock()
 		if err := validateRuleNode(r.FormValue("target")); err != nil {
 			return true, "", err
 		}
@@ -588,6 +591,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 				return true, "", err
 			}
 			defer tx.Rollback()
+			if err = detachInvalidDeviceRoutes(tx); err != nil {
+				return true, "", err
+			}
 			var id int64
 			if r.FormValue("action") == "rule-update" {
 				if err = tx.QueryRow("SELECT id FROM rules WHERE id=?", r.FormValue("id")).Scan(&id); err == nil {
@@ -604,6 +610,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 				_, err = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", fmt.Sprintf("rule_source:%d", id), source)
 			}
 			if err != nil {
+				return true, "", err
+			}
+			if err = detachInvalidDeviceRoutes(tx); err != nil {
 				return true, "", err
 			}
 			e = tx.Commit()
@@ -641,6 +650,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 		e = tx.Commit()
 		msg = fmt.Sprintf("Исходящее подключение изменено для %d правил", len(ids))
 	case "rule-bulk-delete":
+		deviceLockRecord.Lock()
+		defer deviceLockRecord.Unlock()
 		ids := strings.Split(r.FormValue("ids"), ",")
 		if len(ids) == 0 || len(ids) > 10000 {
 			return true, "", fmt.Errorf("Выберите правила")
@@ -667,6 +678,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 				return true, "", err
 			}
 		}
+		if err = detachInvalidDeviceRoutes(tx); err != nil {
+			return true, "", err
+		}
 		e = tx.Commit()
 		msg = fmt.Sprintf("Удалено правил: %d", len(ids))
 	case "rule-toggle":
@@ -680,6 +694,8 @@ func controlAction(r *http.Request) (bool, string, error) {
 			e = saveSetting(key, next)
 		}
 	case "rule-delete":
+		deviceLockRecord.Lock()
+		defer deviceLockRecord.Unlock()
 		var tx *sql.Tx
 		tx, e = db.Begin()
 		if e != nil {
@@ -688,6 +704,9 @@ func controlAction(r *http.Request) (bool, string, error) {
 		_, e = tx.Exec("DELETE FROM settings WHERE key IN ('rule_disabled:' || (SELECT id FROM rules WHERE id=?),'rule_source:' || (SELECT id FROM rules WHERE id=?))", r.FormValue("id"), r.FormValue("id"))
 		if e == nil {
 			_, e = tx.Exec("DELETE FROM rules WHERE id=?", r.FormValue("id"))
+		}
+		if e == nil {
+			e = detachInvalidDeviceRoutes(tx)
 		}
 		if e == nil {
 			e = tx.Commit()

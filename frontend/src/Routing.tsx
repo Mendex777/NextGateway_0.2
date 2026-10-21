@@ -630,11 +630,13 @@ export default function Routing({
         >
           <Input.TextArea rows={2} />
         </Form.Item>
+        <Form.Item noStyle shouldUpdate={(before,after)=>before.kind!==after.kind}>
+          {({getFieldValue})=>getFieldValue("kind")==="device"?null:(
         <Form.Item
           name="value"
           label="Пункт назначения"
           extra={<>
-            <div>Каждое значение с новой строки. Для правила всего устройства не требуется.</div>
+            <div>Каждое значение с новой строки.</div>
             <details style={{marginTop: 8}}>
               <summary style={{cursor: "pointer"}}>Форматы доменов и IP</summary>
               <div style={{marginTop: 8, lineHeight: 1.7}}>
@@ -654,6 +656,8 @@ export default function Routing({
           </>}
         >
           <Input.TextArea rows={5} />
+        </Form.Item>
+          )}
         </Form.Item>
         <Form.Item name="target" label="Исходящий" rules={required}>
           <Target p={p} />

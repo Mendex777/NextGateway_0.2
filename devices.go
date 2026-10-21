@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -66,11 +67,12 @@ func devices() []Device {
 				d.Name = d.IP
 			}
 		}
+		d.Target, d.TargetLabel = "", ""
 		if d.RuleID != 0 {
-			var target, disabled string
-			if db.QueryRow("SELECT target,COALESCE((SELECT value FROM settings WHERE key='rule_disabled:' || rules.id),'0') FROM rules WHERE id=?", d.RuleID).Scan(&target, &disabled) == nil {
+			target, disabled, err := ownedDeviceRoute(db, d.RuleID, d.IP)
+			if err == nil {
 				d.Target = target
-				if disabled == "1" {
+				if disabled {
 					d.TargetLabel = " (отключено)"
 				}
 			} else {
@@ -220,11 +222,12 @@ func saveDevice(r *http.Request) error {
 	}
 	defer tx.Rollback()
 	if d.RuleID != 0 {
-		var kind, source string
-		if tx.QueryRow("SELECT kind,COALESCE((SELECT value FROM settings WHERE key='rule_source:' || rules.id),'') FROM rules WHERE id=?", d.RuleID).Scan(&kind, &source) != nil {
+		_, _, err := ownedDeviceRoute(tx, d.RuleID, ip)
+		if err == sql.ErrNoRows {
 			d.RuleID = 0
-		} else if kind != "device" || source != ip {
-			return fmt.Errorf("Связанное правило изменено на странице маршрутизации; проверьте его прежде чем менять маршрут устройства")
+			d.Target, d.TargetLabel = "", ""
+		} else if err != nil {
+			return err
 		}
 	}
 	if target == "" {

@@ -682,6 +682,9 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
+	if e := repairDeviceRoutes(); e != nil {
+		log.Fatal(e)
+	}
 	if setting("balance_groups") == "" {
 		if e := saveGroups(balanceGroups()); e != nil {
 			log.Fatal(e)
