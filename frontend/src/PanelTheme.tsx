@@ -21,8 +21,8 @@ const themeKey = "ngpanel-base-theme";
 const key = "ngpanel-accent";
 const valid = (value: string) => /^#[0-9a-f]{6}$/i.test(value);
 export type Density = "normal" | "compact";
-const densityKey="ngpanel-density",animationKey="ngpanel-map-animation";
-const ThemeContext = createContext({ density:"normal" as Density,setDensity:(_:Density)=>{},mapAnimation:true,setMapAnimation:(_:boolean)=>{},resetAppearance:()=>{},accent: defaultAccent, setAccent: (_: string) => {}, baseTheme: "dark" as BaseTheme, setBaseTheme: (_: BaseTheme) => {} });
+const densityKey="ngpanel-density",animationKey="ngpanel-map-animation",speedKey="ngpanel-map-speeds";
+const ThemeContext = createContext({ density:"normal" as Density,setDensity:(_:Density)=>{},mapAnimation:true,setMapAnimation:(_:boolean)=>{},mapSpeeds:true,setMapSpeeds:(_:boolean)=>{},resetAppearance:()=>{},accent: defaultAccent, setAccent: (_: string) => {}, baseTheme: "dark" as BaseTheme, setBaseTheme: (_: BaseTheme) => {} });
 export const usePanelTheme = () => useContext(ThemeContext);
 function ThemeVariables({ children, palette }: { children: ReactNode; palette: typeof baseThemes[number] }) {
   const { token } = theme.useToken();
@@ -60,11 +60,13 @@ export default function PanelTheme({ children }: { children: ReactNode }) {
   };
   const [density,updateDensity]=useState<Density>(()=>{try{return localStorage.getItem(densityKey)==="compact"?"compact":"normal";}catch{return "normal";}});
   const [mapAnimation,updateMapAnimation]=useState(()=>{try{return localStorage.getItem(animationKey)!=="off";}catch{return true;}});
+  const [mapSpeeds,updateMapSpeeds]=useState(()=>{try{return localStorage.getItem(speedKey)!=="off";}catch{return true;}});
+  const setMapSpeeds=(value:boolean)=>{updateMapSpeeds(value);try{localStorage.setItem(speedKey,value?"on":"off");}catch{}};
   const setDensity=(value:Density)=>{if(value!=="normal"&&value!=="compact")return;updateDensity(value);try{localStorage.setItem(densityKey,value);}catch{}};
   const setMapAnimation=(value:boolean)=>{updateMapAnimation(value);try{localStorage.setItem(animationKey,value?"on":"off");}catch{}};
-  const resetAppearance=()=>{setBaseTheme("dark");setAccent(defaultAccent);setDensity("normal");setMapAnimation(true);};
+  const resetAppearance=()=>{setBaseTheme("dark");setAccent(defaultAccent);setDensity("normal");setMapAnimation(true);setMapSpeeds(true);};
   useEffect(()=>{document.documentElement.dataset.density=density;document.documentElement.dataset.mapAnimation=mapAnimation?"on":"off";},[density,mapAnimation]);
-  return <ThemeContext.Provider value={{ accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,resetAppearance }}>
+  return <ThemeContext.Provider value={{ accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,mapSpeeds,setMapSpeeds,resetAppearance }}>
     <ConfigProvider locale={ruRU} theme={{
       algorithm: light ? theme.defaultAlgorithm : theme.darkAlgorithm,
       token: { fontFamily: '"NGFlagEmoji", "Geist Variable", sans-serif', colorPrimary: accent, colorInfo: accent, colorLink: accent,

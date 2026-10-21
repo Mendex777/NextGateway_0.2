@@ -3,11 +3,13 @@ import type {TrafficSnapshot} from "./types";
 import {appendGatewayPoint,gatewayTrafficPoint,trafficCurve,nearestTrafficPoint,restoreGatewayHistory,mergeGatewayHistory,gatewayHistoryKey,trafficServerNow,type GatewayTrafficPoint} from "./gatewayTraffic";
 import {SizeFormatter} from "./reference/utils";
 const bytes=SizeFormatter.sizeFormat;
+// Reserve room for long labels without moving the plot when their digits change.
+const chartLeft=72,chartRight=8;
 export default function HomeTraffic({traffic,error,actions,sessions,onSessionsClick}:{traffic?:TrafficSnapshot;error:boolean;actions:ReactNode;sessions?:{count:number;devices:number;updated:string};onSessionsClick:()=>void}){
  const tooltipID=useId();
  const [hover,setHover]=useState<{point:GatewayTrafficPoint;x:number}|undefined>();
  const hoverRef=useRef(hover);hoverRef.current=hover;
- const axis=useRef({end:Date.now(),width:1,left:48,right:8});
+ const axis=useRef({end:Date.now(),width:1,left:chartLeft,right:chartRight});
  const [points,setPoints]=useState<GatewayTrafficPoint[]>(()=>{try{return restoreGatewayHistory(sessionStorage.getItem(gatewayHistoryKey));}catch{return [];}});
  const canvas=useRef<HTMLCanvasElement>(null),pointsRef=useRef(points),arrived=useRef(0),refresh=useRef(()=>{});
  pointsRef.current=points;
@@ -23,14 +25,13 @@ export default function HomeTraffic({traffic,error,actions,sessions,onSessionsCl
   let width=0,height=164,frame=0,visible=false,lastDraw=0,ceiling=1;
   const draw=(now:number)=>{
    if(!width)return;
-   const data=pointsRef.current,wall=trafficServerNow(clock.current,now),right=8,top=12,bottom=26,h=height-top-bottom;
+   const data=pointsRef.current,wall=trafficServerNow(clock.current,now),left=chartLeft,right=chartRight,top=12,bottom=26,h=height-top-bottom,w=Math.max(1,width-left-right);
    const style=getComputedStyle(el),up=style.getPropertyValue("--map-upload").trim()||"#c4b5fd",down=style.getPropertyValue("--map-download").trim()||"#8b5cf6";
    const max=Math.max(1024,...data.filter(p=>p.time>wall-90000).flatMap(p=>[p.up,p.down]))*1.15;
    ceiling=reduced.matches?max:ceiling+(max-ceiling)*Math.min(1,(now-lastDraw)/250);
    if(!lastDraw)ceiling=max;lastDraw=now;
    ctx.clearRect(0,0,width,height);ctx.font='10px "Geist Variable",sans-serif';ctx.fillStyle=style.getPropertyValue("--ng-muted").trim()||"#888";
    const labels=Array.from({length:4},(_,i)=>bytes(ceiling*(1-i/3)));
-   const left=Math.max(48,Math.ceil(Math.max(...labels.map(label=>ctx.measureText(label).width)))+11),w=Math.max(1,width-left-right);
    ctx.textAlign="right";ctx.setLineDash([2,5]);ctx.strokeStyle=style.getPropertyValue("--ng-border").trim()||"#333";ctx.lineWidth=1;
    for(let i=0;i<=3;i++){const y=top+h*i/3;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(width-right,y);ctx.stroke();ctx.fillText(labels[i],left-7,y+3);}
    ctx.setLineDash([]);ctx.textAlign="center";

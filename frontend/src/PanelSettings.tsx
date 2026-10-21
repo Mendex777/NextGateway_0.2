@@ -2,7 +2,7 @@ import { Button, ColorPicker, Space, Typography, Segmented, Switch } from "antd"
 import { CheckOutlined } from "./icons";
 import { baseThemes, defaultAccent, palettes, usePanelTheme } from "./PanelTheme";
 export default function PanelSettings() {
-  const { accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,resetAppearance } = usePanelTheme();
+  const { accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,mapSpeeds,setMapSpeeds,resetAppearance } = usePanelTheme();
   return <div className="appearance-panel">
     <Typography.Title level={5} style={{ marginTop: 0 }}>Основная тема</Typography.Title>
     <Typography.Paragraph type="secondary">Оформление всей панели. Изменения сохраняются в этом браузере.</Typography.Paragraph>
@@ -25,6 +25,7 @@ export default function PanelSettings() {
       <Button type="text" disabled={accent === defaultAccent} onClick={() => setAccent(defaultAccent)}>По умолчанию</Button>
     </Space></div>
     <section className="appearance-section"><h3>Плотность таблиц</h3><Segmented block aria-label="Плотность таблиц" value={density} onChange={value=>setDensity(value as "normal"|"compact")} options={[{label:"Обычная",value:"normal"},{label:"Компактная",value:"compact"}]}/></section>
+    <section className="appearance-section appearance-animation"><div><h3>Скорость на карточках</h3><p>Отправка и приём на карточках устройств, шлюза и VPN.</p></div><Switch aria-label="Скорость на карточках" checked={mapSpeeds} onChange={setMapSpeeds}/></section>
     <section className="appearance-section appearance-animation"><div><h3>Анимация карты</h3><p>Движение трафика и возврат устройств на место. Сбор данных продолжается.</p></div><Switch aria-label="Анимация карты" checked={mapAnimation} onChange={setMapAnimation}/></section>
     <Button className="appearance-reset" block onClick={resetAppearance}>Сбросить оформление</Button>
   </div>;
