@@ -1,7 +1,7 @@
 {
   "name": "ngpanel-frontend",
   "private": true,
-  "version": "0.3.42",
+  "version": "0.3.43",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build",

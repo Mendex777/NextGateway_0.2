@@ -1,7 +1,7 @@
 import {trafficFresh,trafficServerNow} from "./gatewayTraffic";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Button, Input, Select } from "antd";
-import { Globe, Monitor, Network, Router, Server, ShieldCheck, Smartphone, Tablet, Tv, X } from "lucide-react";
+import { Globe, Monitor, Network, Router, Server, ShieldCheck, Smartphone, Tablet, Tv, X, Gamepad2, Printer, PrinterCheck, ScanLine, Box, Lightbulb, Plug, Bot, Camera, Speaker, Laptop, HardDrive, Watch, BookOpen, Thermometer, Refrigerator, Wifi, House } from "lucide-react";
 import { action, getJSON } from "./api";
 import type { Page, GroupStatus, TrafficSnapshot, TrafficValue, TrafficRoute, MapProbe, Probe } from "./types";
 import "./network-map.css";
@@ -13,14 +13,41 @@ import { SizeFormatter } from "./reference/utils";
 
 interface Event { Source:string; Device:string; Outbound:string; OutboundLabel:string }
 interface Point { x:number; y:number }
-type Kind="phone"|"computer"|"tablet"|"tv"|"router"|"unknown";
+type Kind=(typeof types)[number]["value"];
 interface MapNode { id:string; kind:"device"|"gateway"|"exit"; title:string; subtitle:string; count:number; tag?:string; ip?:string; group?:string; type?:Kind; traffic?:TrafficValue }
 const typeKey="ngpanel-network-map-types";
 function read<T>(key:string,fallback:T):T {try{return JSON.parse(localStorage.getItem(key)||"null")||fallback;}catch{return fallback;}}
 function write(key:string,value:unknown){try{localStorage.setItem(key,JSON.stringify(value));}catch{/* Layout remains available in this session. */}}
-const types=[{value:"unknown",label:"Не указан"},{value:"phone",label:"Телефон"},{value:"computer",label:"Компьютер"},{value:"tablet",label:"Планшет"},{value:"tv",label:"Телевизор"},{value:"router",label:"Роутер"}];
+const types=[
+ {value:"unknown",label:"Не указан",icon:Network},
+ {value:"phone",label:"Телефон",icon:Smartphone},
+ {value:"computer",label:"Компьютер",icon:Monitor},
+ {value:"laptop",label:"Ноутбук",icon:Laptop},
+ {value:"tablet",label:"Планшет",icon:Tablet},
+ {value:"tv",label:"Телевизор",icon:Tv},
+ {value:"console",label:"Игровая приставка",icon:Gamepad2},
+ {value:"ereader",label:"Электронная книга",icon:BookOpen},
+ {value:"watch",label:"Умные часы",icon:Watch},
+ {value:"router",label:"Роутер",icon:Router},
+ {value:"accesspoint",label:"Точка доступа Wi-Fi",icon:Wifi},
+ {value:"switch",label:"Сетевой коммутатор",icon:Network},
+ {value:"server",label:"Сервер",icon:Server},
+ {value:"nas",label:"Сетевое хранилище (NAS)",icon:HardDrive},
+ {value:"printer",label:"Принтер",icon:Printer},
+ {value:"mfp",label:"МФУ",icon:PrinterCheck},
+ {value:"scanner",label:"Сканер",icon:ScanLine},
+ {value:"printer3d",label:"3D-принтер",icon:Box},
+ {value:"vacuum",label:"Робот-пылесос",icon:Bot},
+ {value:"light",label:"Лампа / лампочка",icon:Lightbulb},
+ {value:"plug",label:"Умная розетка",icon:Plug},
+ {value:"camera",label:"IP-камера",icon:Camera},
+ {value:"speaker",label:"Умная колонка",icon:Speaker},
+ {value:"hub",label:"Хаб умного дома",icon:House},
+ {value:"thermostat",label:"Термостат / датчик",icon:Thermometer},
+ {value:"appliance",label:"Бытовая техника",icon:Refrigerator},
+] as const;
 const infer=(name:string):Kind=>/xiaomi|iphone|redmi|android|pixel|samsung/i.test(name)?"phone":/ipad|tablet|планшет/i.test(name)?"tablet":/desktop|windows|macbook|ноутбук|компьютер/i.test(name)?"computer":"unknown";
-const icon=(node:MapNode)=>node.kind==="gateway"?Router:node.kind==="exit"?(node.tag==="direct"?Globe:node.tag==="block"?ShieldCheck:Server):node.type==="phone"?Smartphone:node.type==="tablet"?Tablet:node.type==="computer"?Monitor:node.type==="tv"?Tv:node.type==="router"?Router:Network;
+const icon=(node:MapNode)=>node.kind==="gateway"?Router:node.kind==="exit"?(node.tag==="direct"?Globe:node.tag==="block"?ShieldCheck:Server):types.find(type=>type.value===node.type)?.icon||Network;
 
 export default function NetworkMap({p,events,fresh,groups,navigate,traffic,trafficError}:{p:Page;events:Event[];fresh:boolean;groups:Record<string,GroupStatus>;navigate:(tab:string)=>void;traffic?:TrafficSnapshot;trafficError:boolean}){
  const {mapAnimation}=usePanelTheme();
@@ -38,7 +65,7 @@ export default function NetworkMap({p,events,fresh,groups,navigate,traffic,traff
  useEffect(()=>{const timer=setInterval(()=>setProbeTrips(old=>old.some(p=>p.until<performance.now())?old.filter(p=>p.until>performance.now()):old),1000);return()=>clearInterval(timer);},[]);
  const [known,setKnown]=useState<Page["Devices"]>([]);
  const [positions,setPositions]=useState<Record<string,Point>>({});
- const [deviceTypes,setTypes]=useState<Record<string,Kind>>(()=>read(typeKey,{}));
+ const [deviceTypes,setTypes]=useState<Record<string,Kind>>(()=>Object.fromEntries(Object.entries(read<Record<string,Kind|"steamdeck"|"handheld">>(typeKey,{})).map(([ip,type])=>[ip,type==="steamdeck"||type==="handheld"?"console":type])));
  const [selected,setSelected]=useState("");
  const [hovered,setHovered]=useState("");
  const [draftName,setDraftName]=useState("");
@@ -189,7 +216,7 @@ export default function NetworkMap({p,events,fresh,groups,navigate,traffic,traff
    </svg>
    {shownNodes.map(node=>{const at=position(node),Icon=icon(node),status=health(node),expanded=node.kind==="exit"&&node.tag!=="direct"&&node.tag!=="block"&&hovered===node.id,expandedWidth=Math.min(boardWidth-20,Math.max(nodeWidth+40,320));return <button key={node.id} className={`map-node map-node-${node.kind} ${expanded?"has-expanded":""} ${selected===node.id?"is-selected":""}${emphasis(node.id)} ${status&&!status.stale?(status.alive?"vpn-ready":"vpn-failed"):""}`} style={{left:at.x,top:at.y,width:cardWidth(node),height:nodeHeight}} onPointerDown={e=>startDrag(e,node)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onMouseEnter={()=>setHovered(node.id)} onMouseLeave={()=>setHovered("")} onFocus={()=>setHovered(node.id)} onClick={()=>openDetail(node)} onKeyUp={()=>returnHome(node.id)} onBlur={()=>{returnHome(node.id);setHovered("");}} onKeyDown={e=>{const delta=({ArrowLeft:[-12,0],ArrowRight:[12,0],ArrowUp:[0,-12],ArrowDown:[0,12]} as Record<string,number[]>)[e.key];if(!delta)return;e.preventDefault();cancelAnimationFrame(returnFrames.current[node.id]);const next={...positions,[node.id]:{x:Math.max(nodeWidth/2+12,Math.min(boardWidth-nodeWidth/2-12,at.x+delta[0]))/boardWidth,y:Math.max(nodeHeight/2+12,Math.min(height-nodeHeight/2-12,at.y+delta[1]))/height}};setPositions(next);}} aria-label={`${node.title}, ${node.subtitle}. Подробнее; стрелки — переместить`} title={`${node.title}\n${node.subtitle}${status?`\n${status.stale?"Последняя проверка устарела":status.alive?"Доступен":"Недоступен"}${status.alive&&status.delay?` · ${status.delay} мс`:""}\nПроверено: ${new Date(status.checked).toLocaleString("ru-RU")}`:node.kind==="exit"&&node.tag!=="direct"&&node.tag!=="block"?"\nЕщё нет результатов проверки":""}`}><span className="map-node-icon"><Icon size={24} strokeWidth={1.6}/></span><span className="map-node-copy"><b>{node.title}</b><small>{node.subtitle}</small></span><span className={`map-node-state ${(node.kind==="device"?deviceReady:node.kind==="exit"?exitReady:deviceReady)&&((node.traffic?.UpBPS||0)+(node.traffic?.DownBPS||0)>0)?"has-traffic":fresh&&node.count>0?"has-connection":""}`}/>{expanded&&<span className={"map-node-expanded "+(at.y<90?"expand-below":at.y>height-90?"expand-above":"")} style={{width:expandedWidth,left:Math.max(10,Math.min(boardWidth-expandedWidth-10,at.x-expandedWidth/2))-at.x+cardWidth(node)/2}}><Icon size={24} strokeWidth={1.6}/><span><b>{node.title}</b><small>{status?`${status.stale?"Проверка устарела":status.alive?"Доступен":"Недоступен"}${status.alive&&status.delay?` · ${status.delay} мс`:""} · ${new Date(status.checked).toLocaleTimeString("ru-RU")}`:"Нет актуальной проверки"}</small></span></span>}</button>;})}
   </div></div>
-  {detail&&<div className="map-node-details"><div><b>{detail.title}</b><span>{detail.kind==="gateway"?`Xray ${p.Service.trim()==="active"?"запущен":"остановлен"} · ${p.DetectedNetwork.address}`:detail.subtitle}</span><span>{fresh?`${detail.count} активных TCP`:"Нет актуального снимка TCP"}</span>{detail.kind!=="gateway"&&<><span>{(detail.kind==="device"?deviceReady:exitReady)?`↑ ${speed(detail.traffic?.UpBPS||0)} · ↓ ${speed(detail.traffic?.DownBPS||0)}`:"Скорость недоступна"}</span><span>Отправлено {detail.traffic?format(detail.traffic.UpBytes):"—"} · получено {detail.traffic?format(detail.traffic.DownBytes):"—"}</span><span>Учёт {detail.kind==="device"?"по IP устройства":"выхода Xray"}{traffic?.Started?` с ${new Date(traffic.Started).toLocaleString("ru-RU")}`:" ещё не начат"}</span></>}{detail.group&&<span>{groups[detail.group]?.Name?`Текущий узел: ${groups[detail.group].Name}`:"Текущий VPN-узел определяется"}</span>}</div>{detail.kind==="device"&&<><label>Имя устройства<Input size="small" aria-label="Имя устройства на карте" maxLength={100} placeholder={known.find(d=>d.IP===detail.ip)?.AutoName||detail.ip} value={draftName} onChange={e=>setDraftName(e.target.value)} onPressEnter={()=>void saveName(detail.ip!)}/><Button size="small" loading={nameBusy} onClick={()=>void saveName(detail.ip!)}>Сохранить имя</Button>{nameError&&<span role="alert">{nameError}</span>}</label><label>Тип устройства<Select size="small" aria-label="Тип устройства на карте" value={detail.type} options={types} onChange={value=>{const next={...deviceTypes,[detail.ip!]:value};setTypes(next);write(typeKey,next);}}/></label></>}<Button size="small" onClick={()=>navigate(detail.kind==="device"?`routing&view=connections&source=${encodeURIComponent(detail.ip!)}`:detail.kind==="gateway"?"gateway":"subscriptions")}>{detail.kind==="device"?"Показать соединения":detail.kind==="gateway"?"Сеть и DNS":"Подключения"}</Button><button className="map-close" aria-label="Закрыть детали узла" onClick={()=>setSelected("")}><X size={16}/></button></div>}
+  {detail&&<div className="map-node-details"><div><b>{detail.title}</b><span>{detail.kind==="gateway"?`Xray ${p.Service.trim()==="active"?"запущен":"остановлен"} · ${p.DetectedNetwork.address}`:detail.subtitle}</span><span>{fresh?`${detail.count} активных TCP`:"Нет актуального снимка TCP"}</span>{detail.kind!=="gateway"&&<><span>{(detail.kind==="device"?deviceReady:exitReady)?`↑ ${speed(detail.traffic?.UpBPS||0)} · ↓ ${speed(detail.traffic?.DownBPS||0)}`:"Скорость недоступна"}</span><span>Отправлено {detail.traffic?format(detail.traffic.UpBytes):"—"} · получено {detail.traffic?format(detail.traffic.DownBytes):"—"}</span><span>Учёт {detail.kind==="device"?"по IP устройства":"выхода Xray"}{traffic?.Started?` с ${new Date(traffic.Started).toLocaleString("ru-RU")}`:" ещё не начат"}</span></>}{detail.group&&<span>{groups[detail.group]?.Name?`Текущий узел: ${groups[detail.group].Name}`:"Текущий VPN-узел определяется"}</span>}</div>{detail.kind==="device"&&<><label>Имя устройства<Input size="small" aria-label="Имя устройства на карте" maxLength={100} placeholder={known.find(d=>d.IP===detail.ip)?.AutoName||detail.ip} value={draftName} onChange={e=>setDraftName(e.target.value)} onPressEnter={()=>void saveName(detail.ip!)}/><Button size="small" loading={nameBusy} onClick={()=>void saveName(detail.ip!)}>Сохранить имя</Button>{nameError&&<span role="alert">{nameError}</span>}</label><label>Тип устройства<Select size="small" aria-label="Тип устройства на карте" value={detail.type} showSearch optionFilterProp="label" popupMatchSelectWidth={280} options={types.map(({value,label})=>({value,label}))} onChange={value=>{const next={...deviceTypes,[detail.ip!]:value};setTypes(next);write(typeKey,next);}}/></label></>}<Button size="small" onClick={()=>navigate(detail.kind==="device"?`routing&view=connections&source=${encodeURIComponent(detail.ip!)}`:detail.kind==="gateway"?"gateway":"subscriptions")}>{detail.kind==="device"?"Показать соединения":detail.kind==="gateway"?"Сеть и DNS":"Подключения"}</Button><button className="map-close" aria-label="Закрыть детали узла" onClick={()=>setSelected("")}><X size={16}/></button></div>}
 
  </section>;
 }
