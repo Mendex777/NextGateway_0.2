@@ -1,13 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {gatewayTrafficPoint,appendGatewayPoint,trafficCurve,nearestTrafficPoint,restoreGatewayHistory,mergeGatewayHistory} from '../src/gatewayTraffic.ts';
+import {gatewayTrafficPoint,appendGatewayPoint,trafficCurve,nearestTrafficPoint,restoreGatewayHistory,mergeGatewayHistory,trafficFresh,trafficServerNow} from '../src/gatewayTraffic.ts';
 const now=Date.parse('2026-10-17T15:00:00Z');
-const snapshot={Updated:new Date(now).toISOString(),DevicesAvailable:true,Devices:{pc:{UpBPS:100,DownBPS:25000000,UpBytes:1000,DownBytes:5000},phone:{UpBPS:20,DownBPS:300,UpBytes:500,DownBytes:700}},Outbounds:{vpn:{UpBPS:100000,DownBPS:100000}}};
+const snapshot={ReceivedAt:now,ServerNow:new Date(now).toISOString(),Updated:new Date(now).toISOString(),DevicesAvailable:true,Devices:{pc:{UpBPS:100,DownBPS:25000000,UpBytes:1000,DownBytes:5000},phone:{UpBPS:20,DownBPS:300,UpBytes:500,DownBytes:700}},Outbounds:{vpn:{UpBPS:100000,DownBPS:100000}}};
 test('map and graph use device counters once, with matching directions',()=>{
  assert.deepEqual(gatewayTrafficPoint(snapshot,false,now),{time:now,up:120,down:25000300,sent:1500,received:5700});
 });
 test('missing, stale and failed measurements are gaps, not invented zero traffic',()=>{
- for(const value of [undefined,{...snapshot,DevicesAvailable:false},{...snapshot,Updated:'invalid'},{...snapshot,Updated:new Date(now-6000).toISOString()}])assert.equal(gatewayTrafficPoint(value,false,now),null);
+ for(const value of [undefined,{...snapshot,DevicesAvailable:false},{...snapshot,Updated:'invalid'},{...snapshot,ReceivedAt:now-6000}])assert.equal(gatewayTrafficPoint(value,false,now),null);
  assert.equal(gatewayTrafficPoint(snapshot,true,now),null);
 });
 test('polling the same snapshot does not create extra graph points',()=>{
@@ -71,4 +71,30 @@ test('collector history takes precedence without bridging missing samples',()=>{
  assert.equal(merged.length,2);assert.equal(merged.at(-1).down,500);
  assert.equal(nearestTrafficPoint(merged,now-5000),undefined);
  assert.equal(mergeGatewayHistory(local,undefined,now),local);
+});
+
+
+test('traffic freshness ignores VM clock offsets in either direction',()=>{
+ for(const shift of [-86400000,-6000,6000,86400000]){
+  const server=now+shift,s={...snapshot,Updated:new Date(server).toISOString(),ServerNow:new Date(server+1000).toISOString()};
+  assert.equal(trafficFresh(s,false,now+100),true);
+  assert.equal(gatewayTrafficPoint(s,false,now+100).time,server);
+  assert.equal(trafficServerNow(s,now+500),server+1500);
+  assert.equal(trafficFresh(s,false,now+5001),false);
+ }
+});
+
+test('server availability and receipt expiry still stop animation on stale snapshots',()=>{
+ assert.equal(gatewayTrafficPoint({...snapshot,DevicesAvailable:false},false,now),null);
+ assert.equal(gatewayTrafficPoint({...snapshot,ReceivedAt:undefined},false,now),null);
+ assert.equal(gatewayTrafficPoint(snapshot,false,now+6000),null);
+ assert.equal(gatewayTrafficPoint(snapshot,false,now-1),null);
+ assert.equal(trafficFresh(snapshot,true,now),false);
+});
+
+test('graph history uses the server timeline even with a day of clock drift',()=>{
+ const server=now-86400000,s={...snapshot,ServerNow:new Date(server).toISOString()};
+ const point={time:server-1000,up:100,down:1000,sent:10,received:100};
+ assert.deepEqual(mergeGatewayHistory([], [point], trafficServerNow(s,now)),[point]);
+ const history=[point];assert.equal(appendGatewayPoint(history,{...point}),history);
 });

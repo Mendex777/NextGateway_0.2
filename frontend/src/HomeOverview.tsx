@@ -11,7 +11,7 @@ import HomeResources from "./HomeResources";
 import "./home.css";
 import NetworkMap from "./NetworkMap";
 
-interface Snapshot { Updated:string; TCPAvailable:boolean; Events:{TCPState:string;Network:string;Inbound:string;Source:string;Device:string;Outbound:string;OutboundLabel:string}[] }
+interface Snapshot { ReceivedAt:number; Updated:string; TCPAvailable:boolean; Events:{TCPState:string;Network:string;Inbound:string;Source:string;Device:string;Outbound:string;OutboundLabel:string}[] }
 
 export default function HomeOverview({p,samples,failure,navigate,onTool,run,working}:{p:Page;run:Run;working:boolean;samples:Metrics[];failure:string;navigate:(tab:string)=>void;onTool:(tool:string)=>void}) {
  const {traffic,error:trafficError}=useGatewayTraffic();
@@ -21,7 +21,7 @@ export default function HomeOverview({p,samples,failure,navigate,onTool,run,work
  const groupIDs=(p.Home?.Exits||[]).map(e=>e.GroupID).filter(Boolean).sort().join(",");
  useEffect(()=>{
   const abort=new AbortController();let busy=false;
-  const load=async()=>{if(busy||document.hidden)return;busy=true;try{const s=await getJSON<Snapshot>("/api/connections?active=1",abort.signal);if(!abort.signal.aborted){setSnapshot(s);setConnectionError("");}}catch{if(!abort.signal.aborted)setConnectionError("Данные соединений недоступны");}finally{busy=false;}};
+  const load=async()=>{if(busy||document.hidden)return;busy=true;try{const s=await getJSON<Snapshot>("/api/connections?active=1",abort.signal);if(!abort.signal.aborted){setSnapshot({...s,ReceivedAt:performance.now()});setConnectionError("");}}catch{if(!abort.signal.aborted)setConnectionError("Данные соединений недоступны");}finally{busy=false;}};
   void load();const timer=setInterval(load,2000);return()=>{abort.abort();clearInterval(timer);};
  },[]);
  useEffect(()=>{
@@ -30,7 +30,7 @@ export default function HomeOverview({p,samples,failure,navigate,onTool,run,work
   setGroups({});void load();const timer=setInterval(load,15000);return()=>{abort.abort();clearInterval(timer);};
  },[groupIDs]);
  const m=samples.at(-1);
- const fresh=!!snapshot?.TCPAvailable&&!connectionError&&Date.now()-Date.parse(snapshot.Updated)<10000;
+ const fresh=!!snapshot?.TCPAvailable&&!connectionError&&performance.now()-snapshot.ReceivedAt<10000;
  const events=fresh?snapshot!.Events.filter(e=>e.TCPState==="active"&&e.Network==="tcp"&&e.Inbound==="tproxy-in"):[];
  const devices=Array.from(events.reduce((map,e)=>{const row=map.get(e.Source)||{ip:e.Source,name:e.Device||e.Source,count:0};row.count++;map.set(e.Source,row);return map;},new Map<string,{ip:string;name:string;count:number}>()).values()).sort((a,b)=>b.count-a.count);
  return <div className="gateway-home">

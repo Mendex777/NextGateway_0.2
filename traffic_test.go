@@ -75,6 +75,9 @@ func TestTrafficStaleSnapshot(t *testing.T) {
 	raw, _ := json.Marshal(sample)
 	os.WriteFile(dir+"/traffic.json", raw, 0600)
 	got := trafficSnapshot()
+	if got.ServerNow == nil || time.Since(*got.ServerNow) > time.Second {
+		t.Fatal("Missing response clock", got.ServerNow)
+	}
 	if got.DevicesAvailable || got.Devices["192.168.1.56"].UpBPS != 0 || got.Devices["192.168.1.56"].UpBytes != 500 {
 		t.Fatal(got)
 	}
@@ -115,5 +118,21 @@ func TestTrafficExitMarks(t *testing.T) {
 	raw, _ = json.Marshal(config)
 	if _, err = parseTrafficExits(raw); err == nil {
 		t.Fatal("unmarked exit accepted")
+	}
+}
+
+func TestTrafficResponseClockDoesNotBlessOldCollectorData(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NG_REVIEW", "1")
+	t.Setenv("NG_STATE", dir)
+	for _, shift := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
+		wrong := time.Now().Add(shift)
+		sample := TrafficSnapshot{ServerNow: &wrong, Updated: wrong, DevicesAvailable: true, OutboundsAvailable: true}
+		raw, _ := json.Marshal(sample)
+		os.WriteFile(dir+"/traffic.json", raw, 0600)
+		got := trafficSnapshot()
+		if got.DevicesAvailable || got.ServerNow == nil || time.Since(*got.ServerNow) > time.Second || time.Until(*got.ServerNow) > time.Second {
+			t.Fatal(got)
+		}
 	}
 }

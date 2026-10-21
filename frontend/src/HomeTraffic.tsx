@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,useId,type PointerEvent,type ReactNode} from "react";
 import type {TrafficSnapshot} from "./types";
-import {appendGatewayPoint,gatewayTrafficPoint,trafficCurve,nearestTrafficPoint,restoreGatewayHistory,mergeGatewayHistory,gatewayHistoryKey,type GatewayTrafficPoint} from "./gatewayTraffic";
+import {appendGatewayPoint,gatewayTrafficPoint,trafficCurve,nearestTrafficPoint,restoreGatewayHistory,mergeGatewayHistory,gatewayHistoryKey,trafficServerNow,type GatewayTrafficPoint} from "./gatewayTraffic";
 import {SizeFormatter} from "./reference/utils";
 const bytes=SizeFormatter.sizeFormat;
 export default function HomeTraffic({traffic,error,actions,sessions,onSessionsClick}:{traffic?:TrafficSnapshot;error:boolean;actions:ReactNode;sessions?:{count:number;devices:number;updated:string};onSessionsClick:()=>void}){
@@ -11,8 +11,9 @@ export default function HomeTraffic({traffic,error,actions,sessions,onSessionsCl
  const [points,setPoints]=useState<GatewayTrafficPoint[]>(()=>{try{return restoreGatewayHistory(sessionStorage.getItem(gatewayHistoryKey));}catch{return [];}});
  const canvas=useRef<HTMLCanvasElement>(null),pointsRef=useRef(points),arrived=useRef(0),refresh=useRef(()=>{});
  pointsRef.current=points;
+ const clock=useRef(traffic);clock.current=traffic;
  const current=gatewayTrafficPoint(traffic,error);
- useEffect(()=>{const next=gatewayTrafficPoint(traffic,error);setPoints(old=>{const merged=mergeGatewayHistory(old,traffic?.History);return next?appendGatewayPoint(merged,next):merged;});},[traffic,error]);
+ useEffect(()=>{const next=gatewayTrafficPoint(traffic,error);setPoints(old=>{const merged=mergeGatewayHistory(old,traffic?.History,trafficServerNow(traffic));return next?appendGatewayPoint(merged,next):merged;});},[traffic,error]);
  useEffect(()=>{arrived.current=performance.now();refresh.current();try{sessionStorage.setItem(gatewayHistoryKey,JSON.stringify({version:1,points}));}catch{/* Live chart works when storage is unavailable. */}},[points]);
  useEffect(()=>{refresh.current();},[hover]);
  useEffect(()=>{
@@ -22,7 +23,7 @@ export default function HomeTraffic({traffic,error,actions,sessions,onSessionsCl
   let width=0,height=164,frame=0,visible=false,lastDraw=0,ceiling=1;
   const draw=(now:number)=>{
    if(!width)return;
-   const data=pointsRef.current,wall=Date.now(),left=48,right=8,top=12,bottom=26,w=width-left-right,h=height-top-bottom;
+   const data=pointsRef.current,wall=trafficServerNow(clock.current,now),left=48,right=8,top=12,bottom=26,w=width-left-right,h=height-top-bottom;
    const style=getComputedStyle(el),up=style.getPropertyValue("--map-upload").trim()||"#c4b5fd",down=style.getPropertyValue("--map-download").trim()||"#8b5cf6";
    const max=Math.max(1024,...data.filter(p=>p.time>wall-90000).flatMap(p=>[p.up,p.down]))*1.15;
    ceiling=reduced.matches?max:ceiling+(max-ceiling)*Math.min(1,(now-lastDraw)/250);

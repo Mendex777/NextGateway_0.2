@@ -1,3 +1,4 @@
+import {trafficFresh,trafficServerNow} from "./gatewayTraffic";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Button, Input, Select } from "antd";
 import { Globe, Monitor, Network, Router, Server, ShieldCheck, Smartphone, Tablet, Tv, X } from "lucide-react";
@@ -29,12 +30,12 @@ export default function NetworkMap({p,events,fresh,groups,navigate,traffic,traff
  useEffect(()=>{
   if(!traffic?.Probes)return;
   if(!probeSeen.current){probeSeen.current=new Set(traffic.Probes.map(p=>p.ID));return;}
-  const now=Date.now(),added: (MapProbe&{until:number})[]=[];
-  for(const p of traffic.Probes){if(probeSeen.current.has(p.ID))continue;probeSeen.current.add(p.ID);if(now-Date.parse(p.Time)<10000)added.push({...p,until:now+7000});}
+  const now=performance.now(),added: (MapProbe&{until:number})[]=[];
+  for(const p of traffic.Probes){if(probeSeen.current.has(p.ID))continue;probeSeen.current.add(p.ID);if(trafficServerNow(traffic)-Date.parse(p.Time)<10000)added.push({...p,until:now+7000});}
   if(added.length)setProbeTrips(old=>[...old.filter(p=>p.until>now),...added]);
   if(probeSeen.current.size>1024)probeSeen.current=new Set(traffic.Probes.map(p=>p.ID));
  },[traffic]);
- useEffect(()=>{const timer=setInterval(()=>setProbeTrips(old=>old.some(p=>p.until<Date.now())?old.filter(p=>p.until>Date.now()):old),1000);return()=>clearInterval(timer);},[]);
+ useEffect(()=>{const timer=setInterval(()=>setProbeTrips(old=>old.some(p=>p.until<performance.now())?old.filter(p=>p.until>performance.now()):old),1000);return()=>clearInterval(timer);},[]);
  const [known,setKnown]=useState<Page["Devices"]>([]);
  const [positions,setPositions]=useState<Record<string,Point>>({});
  const [deviceTypes,setTypes]=useState<Record<string,Kind>>(()=>read(typeKey,{}));
@@ -60,10 +61,10 @@ export default function NetworkMap({p,events,fresh,groups,navigate,traffic,traff
  useEffect(()=>{const el=frame.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setFrameWidth(Math.max(1,entry.contentRect.width)));observer.observe(el);return()=>observer.disconnect();},[]);
  useEffect(()=>{const abort=new AbortController();let busy=false;const load=async()=>{if(busy||document.hidden)return;busy=true;try{const page=await getJSON<Page>("/api/map/devices",abort.signal);if(!abort.signal.aborted)setKnown(page.Devices||[]);}catch{/* Active connections still identify devices. */}finally{busy=false;}};void load();const timer=setInterval(load,15000);return()=>{abort.abort();clearInterval(timer);};},[]);
 
- const recent=!!traffic&&!trafficError&&Date.now()-Date.parse(traffic.Updated)<5000;
+ const recent=trafficFresh(traffic,trafficError);
  const deviceReady=recent&&traffic!.DevicesAvailable,exitReady=recent&&traffic!.OutboundsAvailable;
  const routeReady=recent&&traffic!.RoutesAvailable;
- const now=Date.now();
+ const now=performance.now();
  for(const entry of routeCache.current.values())entry.route={...entry.route,UpBPS:0,DownBPS:0};
  if(routeReady)for(const route of traffic!.Routes||[]){
   const key=route.Source+"|"+route.Outbound,old=routeCache.current.get(key);
@@ -142,7 +143,7 @@ export default function NetworkMap({p,events,fresh,groups,navigate,traffic,traff
   const probe=id?probes[id]:undefined;
   const checked=sample?.Checked?sample.Checked*1000:probe?.Checked?Date.parse(probe.Checked):0;
   if(!checked||!Number.isFinite(checked))return undefined;
-  return{alive:sample?sample.Alive:probe?.State==="ok",delay:sample?sample.DelayMS:probe?.HTTPSMS,checked,stale:Date.now()-checked>120000};
+  return{alive:sample?sample.Alive:probe?.State==="ok",delay:sample?sample.DelayMS:probe?.HTTPSMS,checked,stale:trafficServerNow(traffic)-checked>120000};
  };
  const position=(node:MapNode)=>{const saved=positions[node.id];const point=saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y)?saved:defaultPosition(node);return {x:Math.max(nodeWidth/2+12,Math.min(boardWidth-nodeWidth/2-12,point.x*boardWidth)),y:Math.max(nodeHeight/2+12,Math.min(height-nodeHeight/2-12,point.y*height))};};
  const gateway=nodes.find(n=>n.id==="gateway")!;

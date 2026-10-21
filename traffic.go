@@ -26,6 +26,7 @@ type TrafficValue struct {
 	UpBPS, DownBPS     float64
 }
 type TrafficSnapshot struct {
+	ServerNow                            *time.Time            `json:"ServerNow,omitempty"`
 	History                              []TrafficHistoryPoint `json:"History,omitempty"`
 	Updated, Started                     time.Time
 	DevicesAvailable, OutboundsAvailable bool
@@ -387,6 +388,9 @@ func collectTraffic() error {
 	defer tick.Stop()
 	step := 0
 	routes := trafficRouteTracker{}
+	udpRoutes := udpRouteTracker{}
+	udpPID := ""
+	udpCone := false
 	for {
 		snapshot := TrafficSnapshot{Updated: time.Now().UTC(), Started: started, Devices: map[string]TrafficValue{}, Outbounds: map[string]TrafficValue{}}
 		// Historical totals remain visible when a device/exit is idle or removed.
@@ -415,7 +419,20 @@ func collectTraffic() error {
 			if e == nil {
 				snapshot.DevicesAvailable = true
 				snapshot.OutboundsAvailable = true
-				snapshot.Routes = routes.update(raw, generation, readTrafficConnections(snapshot.Updated), snapshot.Updated, exits)
+				events := readTrafficConnections(snapshot.Updated)
+				pid := readTrafficCorePID()
+				if pid != udpPID {
+					udpCone = readTrafficCone(configRaw)
+					udpPID = pid
+				}
+				routeEvents := make([]ConnectionEvent, 0, len(events))
+				for _, event := range events {
+					if event.Network != "udp" {
+						routeEvents = append(routeEvents, event)
+					}
+				}
+				routeEvents = append(routeEvents, udpRoutes.update(raw, generation, pid, boot, events, snapshot.Updated, udpCone, lookupUDPRoutes)...)
+				snapshot.Routes = routes.update(raw, generation+"/"+pid, routeEvents, snapshot.Updated, exits)
 				snapshot.RoutesAvailable = true
 				for ip, count := range raw {
 					if strings.HasPrefix(ip, "flow:") {
@@ -481,6 +498,7 @@ func collectTraffic() error {
 	}
 }
 func trafficSnapshot() TrafficSnapshot {
+	serverNow := time.Now().UTC()
 	result := TrafficSnapshot{Devices: map[string]TrafficValue{}, Outbounds: map[string]TrafficValue{}}
 	path := "/run/ngpanel-traffic/traffic.json"
 	if os.Getenv("NG_REVIEW") == "1" {
@@ -488,13 +506,15 @@ func trafficSnapshot() TrafficSnapshot {
 	}
 	file, err := os.Open(path)
 	if err != nil {
+		result.ServerNow = &serverNow
 		result.Message = "Сборщик трафика ещё не запущен"
 		return result
 	}
 	defer file.Close()
 	if json.NewDecoder(io.LimitReader(file, 2*1024*1024)).Decode(&result) != nil {
-		return TrafficSnapshot{Message: "Снимок трафика недоступен", Devices: map[string]TrafficValue{}, Outbounds: map[string]TrafficValue{}}
+		return TrafficSnapshot{ServerNow: &serverNow, Message: "Снимок трафика недоступен", Devices: map[string]TrafficValue{}, Outbounds: map[string]TrafficValue{}}
 	}
+	result.ServerNow = &serverNow
 	if time.Since(result.Updated) > 5*time.Second || time.Until(result.Updated) > 5*time.Second {
 		result.DevicesAvailable = false
 		result.OutboundsAvailable = false

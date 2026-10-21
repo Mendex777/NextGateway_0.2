@@ -117,8 +117,8 @@ func (t *trafficRouteTracker) update(raw map[string]trafficRaw, generation strin
 		if e.Time.After(now.Add(time.Second)) || e.Inbound != "tproxy-in" || !allowed[e.Outbound] {
 			continue
 		}
-		// Retain long-lived active sockets and recently closed datagram/TCP events.
-		if e.TCPState != "active" && now.Sub(e.Time) > 90*time.Second && (e.ClosedAt == nil || now.Sub(*e.ClosedAt) > 90*time.Second) {
+		// UDP bindings are validated by udpRouteTracker; TCP uses active/recent sockets.
+		if e.Network != "udp" && e.TCPState != "active" && now.Sub(e.Time) > 90*time.Second && (e.ClosedAt == nil || now.Sub(*e.ClosedAt) > 90*time.Second) {
 			continue
 		}
 		key := trafficTuple(e.Source, e.SourcePort, e.Destination, e.Port, e.Network)
@@ -145,6 +145,9 @@ func (t *trafficRouteTracker) update(raw map[string]trafficRaw, generation strin
 		old, existed := t.samples[key]
 		route := old.route
 		choices := candidates[key]
+		if parts[4] == "udp" && len(choices) != 1 {
+			route = ""
+		}
 		if len(choices) > 1 {
 			route = ""
 		} else if len(choices) == 1 {

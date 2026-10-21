@@ -32,11 +32,11 @@ class H(http.server.BaseHTTPRequestHandler):
  def do_POST(self):
   self.rfile.read(int(self.headers['Content-Length']));size=1 if self.path=='/upload' else 524288;self.send_response(200);self.send_header('Content-Length',str(size));self.end_headers();self.wfile.write(b'x'*size)
  def log_message(self,*args):pass
-def echo():
- s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('0.0.0.0',8082))
+def echo(address):
+ s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind((address,8082))
  while True:
   data,addr=s.recvfrom(65535);s.sendto(data+b'y'*1000,addr)
-threading.Thread(target=echo,daemon=True).start()
+for address in ['198.19.0.2','198.19.0.3']:threading.Thread(target=echo,args=(address,),daemon=True).start()
 http.server.HTTPServer(('0.0.0.0',8081),H).serve_forever()
 '''
         children.append(subprocess.Popen(['nsenter','-t',str(wan),'-n','python3','-u','-c',fixture],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
@@ -86,6 +86,25 @@ http.server.HTTPServer(('0.0.0.0',8081),H).serve_forever()
             ns(lan,['python3','-c',code]);after,raw=counters();up=after['upload']['198.18.0.2']-before['upload']['198.18.0.2'];down=after['download']['198.18.0.2']-before['download']['198.18.0.2']
             assert 228<=up<1000 and 1228<=down<2000,(up,down)
             print('PASS UDP',tag,'device upload/download',up,down,flush=True)
+        # One UDP source association keeps its first exit across destinations.
+        udp_cases=[]
+        for first,second,tag,port in [('198.19.0.2','198.19.0.3','direct',42001),('198.19.0.3','198.19.0.2','node-1',42002)]:
+            def udp_stats():
+                stats=json.loads(run(['xray','api','statsquery','-s=127.0.0.1:10085','-pattern','outbound>>>']).stdout)
+                return {v['name']:int(v.get('value',0)) for v in stats['stat']}
+            before=udp_stats()
+            code=f"import socket,time;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('0.0.0.0',{port}));s.settimeout(5);s.sendto(b'u'*200,('{first}',8082));assert len(s.recv(4096))==1200;time.sleep(.1);s.sendto(b'v'*200,('{second}',8082));assert len(s.recv(4096))==1200"
+            ns(lan,['python3','-c',code]);time.sleep(.1);after=udp_stats()
+            for direction,amount in [('uplink',400),('downlink',2400)]:
+                key=f'outbound>>>{tag}>>>traffic>>>{direction}'
+                # VLESS/XUDP framing changes transport byte counts.
+                assert after[key]-before.get(key,0)>=amount//2,(tag,direction,before,after)
+                other='node-1' if tag=='direct' else 'direct'
+                other_key=f'outbound>>>{other}>>>traffic>>>{direction}'
+                assert after[other_key]==before.get(other_key,0),(tag,'wrong exit',direction)
+            udp_cases.append(dict(SourcePort=str(port),Destination=second,Outbound=tag))
+            print('PASS CONE UDP',first,'then',second,'keeps',tag,flush=True)
+        pathlib.Path('/tmp/ng-udp-lab.json').write_text(json.dumps(udp_cases))
         # Sustained transfers must be visible before close, including Direct splice.
         # The stock Xray environment is deliberately untouched: splice stays enabled.
         trace=[]

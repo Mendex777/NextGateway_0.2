@@ -1,11 +1,19 @@
 import type {TrafficSnapshot} from "./types";
 export interface GatewayTrafficPoint {time:number;up:number;down:number;sent:number;received:number}
-export function gatewayTrafficPoint(traffic:TrafficSnapshot|undefined,error:boolean,now=Date.now()):GatewayTrafficPoint|null{
- if(!traffic||error||!traffic.DevicesAvailable)return null;
- const time=Date.parse(traffic.Updated);
- if(!Number.isFinite(time)||Math.abs(now-time)>5000)return null;
+// Availability is evaluated by the VM. Receipt freshness uses a monotonic browser clock.
+export function trafficFresh(traffic:TrafficSnapshot|undefined,error:boolean,now=performance.now()){
+ return !!traffic&&!error&&Number.isFinite(traffic.ReceivedAt)&&now-traffic.ReceivedAt!>=0&&now-traffic.ReceivedAt!<=5000;
+}
+export function trafficServerNow(traffic:TrafficSnapshot|undefined,now=performance.now()){
+ const server=Date.parse(traffic?.ServerNow||traffic?.Updated||"");
+ return Number.isFinite(server)&&Number.isFinite(traffic?.ReceivedAt)?server+Math.max(0,now-traffic!.ReceivedAt!):Date.now();
+}
+export function gatewayTrafficPoint(traffic:TrafficSnapshot|undefined,error:boolean,now=performance.now()):GatewayTrafficPoint|null{
+ if(!trafficFresh(traffic,error,now)||!traffic!.DevicesAvailable)return null;
+ const time=Date.parse(traffic!.Updated);
+ if(!Number.isFinite(time))return null;
  const clean=(v:number)=>Number.isFinite(v)&&v>0?v:0;
- return Object.values(traffic.Devices||{}).reduce((sum,v)=>({time,up:sum.up+clean(v.UpBPS),down:sum.down+clean(v.DownBPS),sent:sum.sent+clean(v.UpBytes),received:sum.received+clean(v.DownBytes)}),{time,up:0,down:0,sent:0,received:0});
+ return Object.values(traffic!.Devices||{}).reduce((sum,v)=>({time,up:sum.up+clean(v.UpBPS),down:sum.down+clean(v.DownBPS),sent:sum.sent+clean(v.UpBytes),received:sum.received+clean(v.DownBytes)}),{time,up:0,down:0,sent:0,received:0});
 }
 export function appendGatewayPoint(points:GatewayTrafficPoint[],next:GatewayTrafficPoint){
  if(points.length&&next.time<=points[points.length-1].time)return points;
