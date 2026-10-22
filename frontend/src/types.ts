@@ -9,6 +9,7 @@ export interface Probe {
   Mode?: string;
 }
 export interface Node {
+  Missing: boolean;
   Disabled: boolean;
   ID: number;
   SourceID: number;
@@ -50,6 +51,10 @@ export interface Group {
   interval: number;
   mode: string;
   threshold_ms: number;
+  return_to_preferred?: boolean;
+  return_successes?: number;
+  fastest_policy?: string;
+  gain_ms?: number;
   failures: number;
   cooldown: number;
 }
@@ -173,6 +178,8 @@ export interface Page {
   GeoOffset: number;
 }
 export interface GroupStatus {
+  PreferredNode?: string;
+  PreferredName?: string;
   Name: string;
   Message: string;
   Policy: string;

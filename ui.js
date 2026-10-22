@@ -117,7 +117,7 @@ if(balanceSearch){
  document.querySelectorAll('.balance-entry input').forEach(input=>{input.dataset.incompatible=input.disabled?'1':'0';input.addEventListener('change',balanceFilter);});
  balanceSearch.addEventListener('input',balanceFilter);balanceOnly.addEventListener('change',balanceFilter);balanceSource.addEventListener('change',balanceFilter);
  document.getElementById('balance-clear').onclick=()=>{document.querySelectorAll('.balance-entry input').forEach(input=>input.checked=false);balanceFilter();};
- balanceSearch.closest('form').addEventListener('submit',event=>{const count=document.querySelectorAll('.balance-entry input:checked').length;if(count<2||count>8){event.preventDefault();document.getElementById('balance-selection-count').textContent='Нужно от 2 до 8 подключений';balanceSearch.focus();}});
+ balanceSearch.closest('form').addEventListener('submit',event=>{const count=document.querySelectorAll('.balance-entry input:checked').length;if(count<2||count>32){event.preventDefault();document.getElementById('balance-selection-count').textContent='Нужно от 2 до 32 подключений';balanceSearch.focus();}});
  balanceFilter();
 }
 

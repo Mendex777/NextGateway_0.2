@@ -46,6 +46,7 @@ type Source struct {
 	Count                                                             int
 }
 type Node struct {
+	Missing                                              bool
 	Disabled                                             bool
 	SubscriptionPosition                                 int `json:"-"`
 	BalanceMember                                        bool
@@ -305,6 +306,9 @@ func refresh(id string) error {
 		if e != nil {
 			return e
 		}
+		if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES(?, '0') ON CONFLICT(key) DO UPDATE SET value='0'", "node_missing:"+strconv.Itoa(nid)); e != nil {
+			return e
+		}
 		if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "node_order:"+strconv.Itoa(nid), strconv.Itoa(position+1)); e != nil {
 			return e
 		}
@@ -312,6 +316,9 @@ func refresh(id string) error {
 	for _, ids := range previous {
 		for _, nid := range ids {
 			if fmt.Sprint(nid) == selected || referenced[fmt.Sprint(nid)] {
+				if _, e = tx.Exec("INSERT INTO settings(key,value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value='1'", "node_missing:"+strconv.Itoa(nid)); e != nil {
+					return e
+				}
 				_, e = tx.Exec("UPDATE nodes SET name=CASE WHEN name LIKE ? THEN name ELSE name || ? END WHERE id=?", "% [исчез из подписки]", " [исчез из подписки]", nid)
 				if e != nil {
 					return e
@@ -448,6 +455,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 					db.Exec("UPDATE sources SET error=? WHERE id=?", e.Error(), r.FormValue("id"))
 				}
 				msg = "Подписка импортирована; Xray не изменён"
+			case "source-cleanup":
+				var count int
+				count, e = deleteMissingConnections(r.FormValue("id"), r.FormValue("missing_ids"))
+				msg = fmt.Sprintf("Удалено исчезнувших подключений: %d. Xray не изменён", count)
 			case "delete":
 				e = deleteConnections(r.FormValue("id"), true)
 			default:
@@ -683,6 +694,9 @@ func main() {
 		log.Fatal(e)
 	}
 	if e := repairDeviceRoutes(); e != nil {
+		log.Fatal(e)
+	}
+	if e := repairDeletedGroupMembers(); e != nil {
 		log.Fatal(e)
 	}
 	if setting("balance_groups") == "" {

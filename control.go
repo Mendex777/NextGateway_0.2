@@ -70,7 +70,7 @@ func allNodes() []Node {
 	for _, id := range groupNodeIDs() {
 		members[id] = true
 	}
-	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri,COALESCE(d.value,'0')='1' FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id LEFT JOIN settings d ON d.key='source_disabled:' || n.source_id ORDER BY n.source_id,COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='node_order:' || n.id),2147483647),n.id")
+	rows, e := db.Query("SELECT n.id,n.source_id,name,host,port,transport,security,COALESCE(s.value,'{}'),n.uri,COALESCE(d.value,'0')='1',COALESCE(m.value,'') FROM nodes n LEFT JOIN settings s ON s.key='node_probe:' || n.id LEFT JOIN settings d ON d.key='source_disabled:' || n.source_id LEFT JOIN settings m ON m.key='node_missing:' || n.id ORDER BY n.source_id,COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='node_order:' || n.id),2147483647),n.id")
 	if e != nil {
 		return nil
 	}
@@ -78,8 +78,9 @@ func allNodes() []Node {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		var probe, raw string
-		if rows.Scan(&n.ID, &n.SourceID, &n.Name, &n.Host, &n.Port, &n.Transport, &n.Security, &probe, &raw, &n.Disabled) == nil {
+		var probe, raw, missing string
+		if rows.Scan(&n.ID, &n.SourceID, &n.Name, &n.Host, &n.Port, &n.Transport, &n.Security, &probe, &raw, &n.Disabled, &missing) == nil {
+			n.Missing = missing == "1" || missing == "" && strings.HasSuffix(n.Name, missingNodeSuffix)
 			json.Unmarshal([]byte(probe), &n.Probe)
 			fillNodeDetails(&n, raw)
 			n.BalanceMember = members[strconv.Itoa(n.ID)]

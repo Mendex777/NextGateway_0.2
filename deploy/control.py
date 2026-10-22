@@ -133,7 +133,7 @@ def validate(config):
             expected={'tag':tag,'selector':[prefix],'fallbackTag':'block','strategy':{'type':'leastPing'}}
             if bal!=expected:raise ValueError('VPN fallback must block traffic')
             members=[o for o in config['outbounds'] if str(o.get('tag','')).startswith(prefix)]
-            if not 2<=len(members)<=8:raise ValueError('Unexpected balance group size')
+            if not 2<=len(members)<=32:raise ValueError('Unexpected balance group size')
             for o in members:
                 if not re.fullmatch(re.escape(prefix)+r'[1-9][0-9]*-',o['tag']) or o.get('protocol') not in ('vless','hysteria') or o['tag'] in member_tags:raise ValueError('Unexpected balance member')
                 member_tags.add(o['tag'])
@@ -308,13 +308,17 @@ def validate_group_policies(config,groups):
         seen.add(gid)
         mode=g.get('mode') or 'fastest'
         threshold=g.get('threshold_ms',1000);failures=g.get('failures',2);cooldown=g.get('cooldown',60)
+        fastest=g.get('fastest_policy') or 'gain';gain=g.get('gain_ms',50)
+        returning=g.get('return_to_preferred',False);successes=g.get('return_successes',20)
+        if type(returning)!=bool or type(successes)!=int or not 1<=successes<=100:raise ValueError('Unexpected preferred node policy')
+        if fastest not in ('gain','absolute') or type(gain)!=int or not 1<=gain<=60000:raise ValueError('Unexpected latency comparison policy')
         if type(g.get('interval'))!=int or not 10<=g['interval']<=600:raise ValueError('Unexpected group interval')
         if mode not in ('fastest','threshold','failover') or type(threshold)!=int or not 50<=threshold<=60000 or type(failures)!=int or not 1<=failures<=10 or type(cooldown)!=int or not 0<=cooldown<=3600:raise ValueError('Unexpected switching policy')
         if gid in used:
             prefix='auto-vpn-'+gid+'-'
             actual={o['tag'][len(prefix):-1] for o in config['outbounds'] if o['tag'].startswith(prefix)}
             if set(g.get('nodes',[]))!=actual:raise ValueError('Group policy members differ from config')
-            result.append(dict(g,mode=mode,threshold_ms=threshold,failures=failures,cooldown=cooldown))
+            result.append(dict(g,mode=mode,threshold_ms=threshold,failures=failures,cooldown=cooldown,fastest_policy=fastest,gain_ms=gain,return_to_preferred=returning,return_successes=successes))
     return result
 
 def apply(config, gateway, config_hash, n, groups=None):

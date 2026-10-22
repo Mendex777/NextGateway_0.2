@@ -103,6 +103,69 @@ func TestBalanceRejectsMissingMemberAndLimits(t *testing.T) {
 	}
 }
 
+func TestBalanceGroupSizeBoundaries(t *testing.T) {
+	for _, count := range []int{1, 2, 8, 16, 32, 33} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			configDatabase(t)
+			ids := []string{}
+			for i := 1; i <= count; i++ {
+				ids = append(ids, fmt.Sprint(i))
+				if _, err := db.Exec("INSERT INTO nodes VALUES(?,?)", i, fmt.Sprintf("vless://a4d22397-77f8-4e75-96c1-027304162e20@node%d.test:443?security=none", i)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			saveGroups([]BalanceGroup{{ID: "1", Name: "Bounds", Nodes: ids, Interval: 10}})
+			saveSetting("default_route", "group:1")
+			config, err := buildConfig()
+			if count == 1 || count == 33 {
+				if err == nil {
+					t.Fatal("out-of-range group accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			members := 0
+			for _, out := range config["outbounds"].([]any) {
+				if strings.HasPrefix(out.(map[string]any)["tag"].(string), "auto-vpn-1-") {
+					members++
+				}
+			}
+			if members != count {
+				t.Fatalf("generated %d members, want %d", members, count)
+			}
+			if os.Getenv("NG_XRAY_INTEGRATION") != "1" {
+				return
+			}
+			raw, _ := json.Marshal(config)
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if output, err := exec.Command("/usr/local/bin/xray", "run", "-test", "-c", path).CombinedOutput(); err != nil {
+				t.Fatalf("Xray: %v %s", err, output)
+			}
+			check := exec.Command("python3", "-c", `import importlib.util,json,sys,copy
+s=importlib.util.spec_from_file_location('control','deploy/control.py');c=importlib.util.module_from_spec(s);s.loader.exec_module(c)
+config=json.load(sys.stdin);c.validate(config)
+bad=copy.deepcopy(config);member=next(o for o in bad['outbounds'] if o['tag'].startswith('auto-vpn-1-'))
+bad['outbounds']=[o for o in bad['outbounds'] if not o['tag'].startswith('auto-vpn-1-')]
+for i in range(1,34):
+ o=copy.deepcopy(member);o['tag']='auto-vpn-1-'+str(i)+'-';bad['outbounds'].append(o)
+try:c.validate(bad)
+except ValueError as e:
+ if str(e)!='Unexpected balance group size':raise
+else:raise Exception('33 members accepted by root validator')
+`)
+			check.Stdin = bytes.NewReader(raw)
+			if output, err := check.CombinedOutput(); err != nil {
+				t.Fatalf("Root validation: %v %s", err, output)
+			}
+		})
+	}
+}
+
 func TestGroupsDoNotReplaceSelectedVPN(t *testing.T) {
 	configDatabase(t)
 	db.Exec("INSERT INTO nodes VALUES(1,'vless://a4d22397-77f8-4e75-96c1-027304162e20@one.test:443?security=none'),(2,'vless://a4d22397-77f8-4e75-96c1-027304162e20@two.test:443?security=none')")

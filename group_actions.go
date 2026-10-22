@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+func preferredGroupNode(g BalanceGroup) string {
+	node := setting("group_preferred:" + g.ID)
+	if !slices.Contains(g.Nodes, node) {
+		return ""
+	}
+	return node
+}
 func selectGroupNode(id, node string) error {
 	if !nodeAvailable(node) {
 		return fmt.Errorf("Подписка отключена")
@@ -35,7 +42,15 @@ func selectGroupNode(id, node string) error {
 	if _, ok := all[tag]; !ok {
 		return fmt.Errorf("Узел ещё не проверен Xray; дождитесь первой проверки")
 	}
+	key := "group_preferred:" + id
+	previous := setting(key)
+	if e = saveSetting(key, node); e != nil {
+		return fmt.Errorf("Не удалось сохранить приоритетный узел")
+	}
 	if e = overrideGroup(id, tag); e != nil {
+		if restoreErr := saveSetting(key, previous); restoreErr != nil {
+			return fmt.Errorf("Не удалось переключить группу и восстановить приоритетный узел")
+		}
 		return fmt.Errorf("Не удалось переключить группу через API Xray")
 	}
 	groupControl.Lock()
@@ -123,12 +138,7 @@ func startGroupCheck(id string, requests ...string) error {
 			setGroupCheck(id, result)
 		}
 		preview := g
-		if preview.Mode == "fastest" {
-			preview.Mode = "threshold"
-			preview.ThresholdMS = 0
-			preview.Failures = 1
-			preview.Cooldown = 0
-		}
+		preview.PreferredNode = preferredGroupNode(g)
 		next := decideGroup(preview, all, state, time.Now())
 		name := ""
 		for _, node := range g.Nodes {

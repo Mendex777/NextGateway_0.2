@@ -44,7 +44,7 @@ func TestServiceHealthDetectsFailures(t *testing.T) {
 	}{
 		{"stopped", "xray", "bad", func(e *healthEvidence) { e.Active = "inactive" }},
 		{"edited config", "config", "bad", func(e *healthEvidence) {
-			e.Config = append([]byte(strings.Replace(string(e.Config), "google", "youtube", 1)))
+			e.Config = []byte(strings.Replace(string(e.Config), "google", "youtube", 1))
 		}},
 		{"invalid geo category", "config", "bad", func(e *healthEvidence) { e.ConfigValid = false }},
 		{"missing geo", "geo", "bad", func(e *healthEvidence) { delete(e.Geo, "geosite.dat") }},

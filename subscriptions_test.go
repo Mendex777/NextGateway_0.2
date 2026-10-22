@@ -77,6 +77,19 @@ func TestSubscriptionRefreshKeepsSelectionOnRenameAndRemoval(t *testing.T) {
 	if !strings.Contains(name, "исчез") || setting("selected_node") != strconv.Itoa(id) {
 		t.Fatal("missing selected node removed or switched")
 	}
+	if setting("node_missing:"+strconv.Itoa(id)) != "1" {
+		t.Fatal("missing node not marked")
+	}
+	body = "vless://id@proxy.example.com:443?security=reality&type=tcp&sid=bb&spx=%2Fnew#returned"
+	if e = refresh("1"); e != nil {
+		t.Fatal(e)
+	}
+	if setting("node_missing:"+strconv.Itoa(id)) != "0" {
+		t.Fatal("returned node still marked missing")
+	}
+	if _, e = deleteMissingConnections("1", strconv.Itoa(id)); e == nil {
+		t.Fatal("returned node deleted using stale confirmation")
+	}
 	request := httptest.NewRequest("POST", "/action", strings.NewReader(url.Values{"action": {"source-update"}, "id": {"1"}, "name": {"changed"}, "url": {server.URL}, "headers": {"{}"}, "interval": {"15"}}.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.ParseForm()

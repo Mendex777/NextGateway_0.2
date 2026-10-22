@@ -176,10 +176,10 @@ export default function Subscriptions({
     modal.confirm({
       title,
       content: (() => {
-        const ids = (p.Nodes || []).filter(n => name === "delete" ? String(n.SourceID) === String(values.id) : String(n.ID) === String(values.id)).map(n => String(n.ID));
+        const ids = (p.Nodes || []).filter(n => (name === "delete" || name === "source-cleanup") ? String(n.SourceID) === String(values.id) && (name !== "source-cleanup" || n.Missing) : String(n.ID) === String(values.id)).map(n => String(n.ID));
         const rules = (p.Rules || []).filter(r => ids.includes(r.Target.replace(/^node:/, "")) || (r.Target === "proxy" && ids.includes(p.Selected)));
         const groups = (p.Groups || []).filter(g => g.nodes.some(id => ids.includes(id)));
-        return <Space direction="vertical"><span>Правила и группы сохранятся. Для недоступных выходов действует настройка «Если VPN недоступен».</span>{ids.includes(p.Selected) && <span>Выбор VPN будет снят.</span>}{rules.length > 0 && <span>Правила: {rules.map(r => r.Name).join(", ")}</span>}{groups.length > 0 && <span>Группы: {groups.map(g => g.name).join(", ")}</span>}</Space>;
+        return <Space direction="vertical"><span>{name === "source-cleanup" ? "Удалённые подключения будут исключены из групп. Сами группы и правила сохранятся. Для недоступных выходов действует настройка «Если VPN недоступен»." : "Правила и группы сохранятся. Для недоступных выходов действует настройка «Если VPN недоступен»."}</span>{ids.includes(p.Selected) && <span>Выбор VPN будет снят.</span>}{rules.length > 0 && <span>Правила: {rules.map(r => r.Name).join(", ")}</span>}{groups.length > 0 && <span>Группы: {groups.map(g => g.name).join(", ")}</span>}</Space>;
       })(),
       okText: "Удалить",
       cancelText: "Отмена",
@@ -242,6 +242,7 @@ export default function Subscriptions({
             <div className="outbound-title">
               <Typography.Text ellipsis={{ tooltip: n.Name }} className="outbound-name"><FlagText text={n.Name} /></Typography.Text>
               {((!g && p.Selected === String(n.ID)) || (g && status[g.id]?.Tag?.startsWith("auto-vpn-" + g.id + "-" + n.ID + "-"))) && <Tag color="var(--ng-accent)">Выбран</Tag>}
+              {g && g.mode === "failover" && g.return_to_preferred && status[g.id]?.PreferredNode === String(n.ID) && <Tag>Приоритетный</Tag>}
             </div>
           ),
         },
@@ -358,6 +359,7 @@ export default function Subscriptions({
     ),
     content: (
       <>
+        {g.nodes.length < 2 && <Alert type="warning" showIcon title="В группе меньше двух подключений" description="Добавьте участников или смените выход в связанных правилах перед применением конфигурации." />}
         <Alert
           className="group-current"
           showIcon
@@ -419,12 +421,14 @@ export default function Subscriptions({
                 ? []
                 : [{ key: "edit", label: "Изменить" }]),
               { key: "probe", label: "Проверить подключения", disabled: s.Disabled },
+              ...(s.URL === "manual:" ? [] : [{ key: "cleanup", label: "Удалить исчезнувшие подключения (" + (s.Nodes || []).filter(n => n.Missing).length + ")", danger: true, disabled: !(s.Nodes || []).some(n => n.Missing) }]),
               { key: "delete", label: "Удалить", danger: true },
             ],
             onClick: ({ key, domEvent }) => {
               domEvent.stopPropagation();
               if (key === "edit") setSource(s);
               else if (key === "probe") doRun("source-probe", { id: s.ID, mode: testMode });
+              else if (key === "cleanup") confirm("Удалить исчезнувшие подключения: " + (s.Nodes || []).filter(n => n.Missing).length + "?", "source-cleanup", {id:s.ID, missing_ids:(s.Nodes || []).filter(n => n.Missing).map(n => String(n.ID)).join(",")});
               else
                 confirm("Удалить подписку «" + s.Name + "»?", "delete", {
                   id: s.ID,
@@ -643,6 +647,10 @@ export default function Subscriptions({
                 name: group.name,
                 interval: group.interval,
                 policy: group.mode,
+                return_to_preferred: !!group.return_to_preferred,
+                return_successes: group.return_successes || 20,
+                fastest_policy: group.fastest_policy || "gain",
+                gain_ms: group.gain_ms || 50,
                 threshold_ms: group.threshold_ms,
                 failures: group.failures,
                 cooldown: group.cooldown,
@@ -650,6 +658,10 @@ export default function Subscriptions({
             : {
                 interval: 30,
                 policy: "threshold",
+                return_to_preferred: false,
+                return_successes: 20,
+                fastest_policy: "gain",
+                gain_ms: 50,
                 threshold_ms: 1000,
                 failures: 2,
                 cooldown: 60,
@@ -673,23 +685,44 @@ export default function Subscriptions({
             ]}
           />
         </Form.Item>
-        <div className="form-columns">
-          <Form.Item name="interval" label="Проверять каждые, секунд">
-            <InputNumber min={10} max={600} />
-          </Form.Item>
-          <Form.Item name="threshold_ms" label="Порог задержки, мс">
-            <InputNumber min={50} max={60000} />
-          </Form.Item>
-          <Form.Item name="failures" label="Превышений подряд">
-            <InputNumber min={1} max={10} />
-          </Form.Item>
-          <Form.Item name="cooldown" label="Пауза между переключениями, с">
-            <InputNumber min={0} max={3600} />
-          </Form.Item>
-        </div>
+        <Form.Item noStyle shouldUpdate={(before, after) => before.policy !== after.policy || before.fastest_policy !== after.fastest_policy || before.return_to_preferred !== after.return_to_preferred}>
+          {({ getFieldValue }) => {
+            const policy = getFieldValue("policy") || "threshold";
+            const gainMode = policy === "fastest" && getFieldValue("fastest_policy") !== "absolute";
+            return <>
+              <Form.Item name="fastest_policy" label="Когда выбирать более быстрый узел" hidden={policy !== "fastest"}>
+                <Select options={[{value:"absolute",label:"Порог текущего узла"},{value:"gain",label:"Другой узел быстрее на…"}]} />
+              </Form.Item>
+              <div className="form-columns">
+              <Form.Item name="interval" label="Проверять каждые, секунд">
+                <InputNumber min={10} max={600} />
+              </Form.Item>
+              <Form.Item name="threshold_ms" label="Порог задержки, мс" hidden={policy === "failover" || gainMode}>
+                <InputNumber min={50} max={60000} />
+              </Form.Item>
+              <Form.Item name="gain_ms" label="Разница задержки, мс" hidden={!gainMode} extra="Например, 50 мс: с 300 на 280 не переключаемся, с 300 на 220 — можно.">
+                <InputNumber min={1} max={60000} />
+              </Form.Item>
+              <Form.Item name="failures" label={policy === "failover" ? "Неудачных проверок подряд" : gainMode ? "Подтверждений подряд" : "Неудачных проверок или превышений подряд"}>
+                <InputNumber min={1} max={10} />
+              </Form.Item>
+              <Form.Item name="cooldown" label="Пауза между переключениями, с">
+                <InputNumber min={0} max={3600} />
+              </Form.Item>
+            </div>
+            <Form.Item name="return_to_preferred" valuePropName="checked" label="Возвращаться на выбранный узел" hidden={policy !== "failover"} extra={group && status[group.id]?.PreferredName ? `Приоритетный: ${status[group.id].PreferredName}. Ручной выбор другого участника меняет приоритет.` : "Приоритетным станет последний узел, выбранный вручную в этой группе. Автоматическое переключение его не меняет."}>
+              <Switch aria-label="Возвращаться на выбранный узел" />
+            </Form.Item>
+            <Form.Item name="return_successes" label="Успешных проверок перед возвратом" hidden={policy !== "failover" || !getFieldValue("return_to_preferred")} extra="Учитываются новые фоновые проверки. Ошибка сбрасывает счётчик; возврат учитывает общую паузу между переключениями.">
+              <InputNumber min={1} max={100} />
+            </Form.Item>
+            <Typography.Paragraph type="secondary">{policy === "failover" ? "Медленный успешный ответ не считается отказом. Нормальная проверка сбрасывает счётчик." : gainMode ? "Переключаемся после подтверждённого преимущества одного и того же узла. Ошибки текущего узла также требуют подтверждения." : "Ошибки и превышения порога входят в общий счётчик. Успешный ответ в пределах порога сбрасывает его."}</Typography.Paragraph>
+            </>;
+          }}
+        </Form.Item>
         <Form.Item
           label={"Подключения группы: " + members.length}
-          extra="От 2 до 8 подключений. Поиск сохраняет выбор."
+          extra="От 2 до 32 подключений. Поиск сохраняет выбор."
         >
           <Transfer
             className="group-picker"

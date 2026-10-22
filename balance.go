@@ -14,15 +14,20 @@ import (
 )
 
 type BalanceGroup struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Nodes       []string            `json:"nodes"`
-	Interval    int                 `json:"interval"`
-	Mode        string              `json:"mode,omitempty"`
-	ThresholdMS int                 `json:"threshold_ms,omitempty"`
-	Failures    int                 `json:"failures,omitempty"`
-	Cooldown    int                 `json:"cooldown"`
-	Members     []BalanceMemberView `json:"-"`
+	ReturnToPreferred bool                `json:"return_to_preferred,omitempty"`
+	ReturnSuccesses   int                 `json:"return_successes,omitempty"`
+	PreferredNode     string              `json:"-"`
+	FastestPolicy     string              `json:"fastest_policy,omitempty"`
+	GainMS            int                 `json:"gain_ms,omitempty"`
+	ID                string              `json:"id"`
+	Name              string              `json:"name"`
+	Nodes             []string            `json:"nodes"`
+	Interval          int                 `json:"interval"`
+	Mode              string              `json:"mode,omitempty"`
+	ThresholdMS       int                 `json:"threshold_ms,omitempty"`
+	Failures          int                 `json:"failures,omitempty"`
+	Cooldown          int                 `json:"cooldown"`
+	Members           []BalanceMemberView `json:"-"`
 }
 
 type BalanceSettings struct {
@@ -32,11 +37,12 @@ type BalanceSettings struct {
 }
 
 type BalanceStatus struct {
-	Override           bool
-	Message, Tag, Name string
-	Samples            []GroupSample
-	Policy             string
-	Controller         string
+	PreferredNode, PreferredName string
+	Override                     bool
+	Message, Tag, Name           string
+	Samples                      []GroupSample
+	Policy                       string
+	Controller                   string
 }
 
 type BalanceMemberView struct {
@@ -98,8 +104,8 @@ func balanceMembers(b BalanceSettings, selected string) ([]string, error) {
 			seen[id] = true
 		}
 	}
-	if len(ids) < 2 || len(ids) > 8 {
-		return nil, fmt.Errorf("Для автовыбора выберите от 2 до 8 подключений, без автоматического добавления выбранного VPN")
+	if len(ids) < 2 || len(ids) > 32 {
+		return nil, fmt.Errorf("Для автовыбора выберите от 2 до 32 подключений, без автоматического добавления выбранного VPN")
 	}
 	return ids, nil
 }
@@ -143,7 +149,7 @@ func saveBalance(r *http.Request) error {
 	id := r.FormValue("group_id")
 	name := strings.TrimSpace(r.FormValue("name"))
 	interval, _ := strconv.Atoi(r.FormValue("interval"))
-	policy := BalanceGroup{Mode: r.FormValue("policy"), ThresholdMS: formInt(r, "threshold_ms", 1000), Failures: formInt(r, "failures", 2), Cooldown: formInt(r, "cooldown", 60)}
+	policy := BalanceGroup{ReturnToPreferred: r.FormValue("return_to_preferred") == "1", ReturnSuccesses: formInt(r, "return_successes", 20), FastestPolicy: r.FormValue("fastest_policy"), GainMS: formInt(r, "gain_ms", 50), Mode: r.FormValue("policy"), ThresholdMS: formInt(r, "threshold_ms", 1000), Failures: formInt(r, "failures", 2), Cooldown: formInt(r, "cooldown", 60)}
 	normalizeGroup(&policy)
 	if e := validateGroupPolicy(policy); e != nil {
 		return e

@@ -17,8 +17,14 @@ func TestManualChoiceResumesPolicy(t *testing.T) {
 	sample.Alive = false
 	sample.Checked++
 	all[state.Current] = sample
-	if next := decideGroup(g, all, state, now); next.Current == state.Current {
-		t.Fatal("failed manual node retained")
+	failed := decideGroup(g, all, state, now)
+	if failed.Current != state.Current || failed.Bad != 1 {
+		t.Fatal("first failed manual check must wait for confirmation")
+	}
+	sample.Checked++
+	all[state.Current] = sample
+	if next := decideGroup(g, all, failed, now); next.Current == state.Current {
+		t.Fatal("confirmed failed manual node retained")
 	}
 	sample.Alive = true
 	sample.DelayMS = 2000

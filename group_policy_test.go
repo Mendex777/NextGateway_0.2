@@ -65,24 +65,75 @@ func TestCooldownFailureAndAllDown(t *testing.T) {
 	a.Checked++
 	all[state.Current] = a
 	next = decideGroup(g, all, next, now.Add(time.Second))
-	if next.Current != "auto-vpn-7-2-" {
-		t.Fatal("failure did not bypass cooldown")
+	if next.Current != state.Current {
+		t.Fatal("confirmed failure ignored cooldown")
 	}
+	for tag, sample := range all {
+		sample.Checked = now.Add(time.Minute).Unix()
+		all[tag] = sample
+	}
+	next = decideGroup(g, all, next, now.Add(time.Minute))
+	if next.Current != "auto-vpn-7-2-" {
+		t.Fatal("confirmed failure did not switch after cooldown")
+	}
+	g.Cooldown = 0
 	b := all[next.Current]
 	b.Alive = false
-	all[next.Current] = b
-	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	b.Checked++
+	all[b.Tag] = b
+	next = decideGroup(g, all, next, now.Add(61*time.Second))
+	if next.Current != b.Tag || next.Bad != 1 {
+		t.Fatal("first failure switched to block")
+	}
+	b.Checked++
+	all[b.Tag] = b
+	next = decideGroup(g, all, next, now.Add(62*time.Second))
 	if next.Current != "block" {
-		t.Fatal("all down not blocked")
+		t.Fatal("confirmed all-down not blocked")
 	}
 	b.Alive = true
-	b.Checked = now.Unix() + 3
+	b.Checked++
 	all[b.Tag] = b
-	next = decideGroup(g, all, next, now.Add(3*time.Second))
+	next = decideGroup(g, all, next, now.Add(63*time.Second))
 	if next.Current != b.Tag {
 		t.Fatal("recovery missing")
 	}
 }
+func TestThresholdFailuresShareCounterAndRecover(t *testing.T) {
+	g, all, state, now := policyFixture()
+	a := all[state.Current]
+	a.Alive = false
+	a.DelayMS = 0
+	all[a.Tag] = a
+	next := decideGroup(g, all, state, now)
+	if next.Current != state.Current || next.Bad != 1 {
+		t.Fatal("first failed check switched", next)
+	}
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.Bad != 1 {
+		t.Fatal("same failure counted twice")
+	}
+	a.Alive = true
+	a.DelayMS = 200
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Bad != 0 || next.Current != state.Current {
+		t.Fatal("success did not reset failure")
+	}
+	a.DelayMS = 1500
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(3*time.Second))
+	a.Alive = false
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(4*time.Second))
+	if next.Current != "auto-vpn-7-2-" {
+		t.Fatal("mixed exceedance/failure did not switch", next)
+	}
+}
+
 func TestFailureOnlyNoLatencySwitch(t *testing.T) {
 	g, all, state, now := policyFixture()
 	g.Mode = "failover"
@@ -219,5 +270,322 @@ func TestPolicyPendingUsesAppliedSnapshot(t *testing.T) {
 	g.ThresholdMS = 1000
 	if !groupPolicyPending(c, []BalanceGroup{g}) {
 		t.Fatal("threshold change not detected")
+	}
+}
+
+func TestFailoverCountsFailuresAndIgnoresDelay(t *testing.T) {
+	g, all, state, now := policyFixture()
+	g.Mode = "failover"
+	a := all[state.Current]
+	a.DelayMS = 5000
+	all[a.Tag] = a
+	next := decideGroup(g, all, state, now)
+	if next.Bad != 0 || next.Current != a.Tag {
+		t.Fatal("latency affected failover")
+	}
+	a.Alive = false
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.Bad != 1 || next.Current != a.Tag {
+		t.Fatal("first failure switched")
+	}
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Bad != 1 {
+		t.Fatal("duplicate failure counted")
+	}
+	a.Alive = true
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(3*time.Second))
+	if next.Bad != 0 {
+		t.Fatal("success did not reset")
+	}
+	a.Alive = false
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(4*time.Second))
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(5*time.Second))
+	if next.Current != "auto-vpn-7-2-" {
+		t.Fatal("confirmed failure not switched", next)
+	}
+}
+func TestFastestGainRequiresPairedFreshSamples(t *testing.T) {
+	g, all, state, now := policyFixture()
+	g.Mode = "fastest"
+	g.FastestPolicy = "gain"
+	g.GainMS = 50
+	a := all[state.Current]
+	a.DelayMS = 300
+	all[a.Tag] = a
+	b := all["auto-vpn-7-2-"]
+	b.DelayMS = 280
+	all[b.Tag] = b
+	next := decideGroup(g, all, state, now)
+	if next.Bad != 0 {
+		t.Fatal("small advantage counted")
+	}
+	b.DelayMS = 220
+	b.Checked++
+	all[b.Tag] = b
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.Bad != 0 {
+		t.Fatal("old current sample paired twice")
+	}
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Bad != 1 || next.Current != a.Tag {
+		t.Fatal("first confirmation missing", next)
+	}
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(3*time.Second))
+	if next.Bad != 1 {
+		t.Fatal("old candidate counted twice")
+	}
+	b.Checked++
+	all[b.Tag] = b
+	next = decideGroup(g, all, next, now.Add(4*time.Second))
+	if next.Current != b.Tag {
+		t.Fatal("gain not switched", next)
+	}
+}
+func TestFastestGainCandidateMustRemainSame(t *testing.T) {
+	g, all, state, now := policyFixture()
+	g.Mode = "fastest"
+	g.FastestPolicy = "gain"
+	g.GainMS = 50
+	g.Nodes = append(g.Nodes, "3")
+	a := all[state.Current]
+	a.DelayMS = 300
+	all[a.Tag] = a
+	b := all["auto-vpn-7-2-"]
+	b.DelayMS = 200
+	all[b.Tag] = b
+	c := GroupSample{Tag: "auto-vpn-7-3-", Alive: true, DelayMS: 250, Checked: now.Unix()}
+	all[c.Tag] = c
+	next := decideGroup(g, all, state, now)
+	if next.Bad != 1 {
+		t.Fatal(next)
+	}
+	a.Checked++
+	b.Checked++
+	c.Checked++
+	b.DelayMS = 240
+	c.DelayMS = 190
+	all[a.Tag] = a
+	all[b.Tag] = b
+	all[c.Tag] = c
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.Current != a.Tag || next.Bad != 1 {
+		t.Fatal("changing candidate retained old count", next)
+	}
+	a.Checked++
+	c.Checked++
+	all[a.Tag] = a
+	all[c.Tag] = c
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Current != c.Tag {
+		t.Fatal("stable candidate not chosen", next)
+	}
+}
+func TestFastestAbsoluteAndCooldown(t *testing.T) {
+	g, all, state, now := policyFixture()
+	g.Mode = "fastest"
+	g.FastestPolicy = "absolute"
+	g.ThresholdMS = 1000
+	next := decideGroup(g, all, state, now)
+	if next.Bad != 0 {
+		t.Fatal("healthy current ignored absolute threshold")
+	}
+	a := all[state.Current]
+	a.DelayMS = 1500
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	a.Checked++
+	all[a.Tag] = a
+	next.Switched = now
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Current != a.Tag {
+		t.Fatal("cooldown ignored")
+	}
+	for tag, sample := range all {
+		sample.Checked = now.Add(time.Minute).Unix()
+		all[tag] = sample
+	}
+	next = decideGroup(g, all, next, now.Add(time.Minute))
+	if next.Current != "auto-vpn-7-2-" {
+		t.Fatal("absolute mode did not switch", next)
+	}
+}
+
+func returnFixture() (BalanceGroup, map[string]GroupSample, groupDecision, time.Time) {
+	g, all, state, now := policyFixture()
+	g.Mode = "failover"
+	g.ReturnToPreferred = true
+	g.ReturnSuccesses = 2
+	g.PreferredNode = "1"
+	state.Current = "auto-vpn-7-2-"
+	return g, all, state, now
+}
+func TestReturnPreferredCountsFreshSuccesses(t *testing.T) {
+	g, all, state, now := returnFixture()
+	next := decideGroup(g, all, state, now)
+	if next.Current != state.Current || next.ReturnGood != 1 {
+		t.Fatal("returned after one success", next)
+	}
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.ReturnGood != 1 {
+		t.Fatal("same success counted twice")
+	}
+	a := all["auto-vpn-7-1-"]
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Current != a.Tag {
+		t.Fatal("confirmed preferred not chosen", next)
+	}
+}
+func TestReturnPreferredFailureResetAndCooldown(t *testing.T) {
+	g, all, state, now := returnFixture()
+	state.Switched = now
+	next := decideGroup(g, all, state, now)
+	a := all["auto-vpn-7-1-"]
+	a.Alive = false
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.ReturnGood != 0 {
+		t.Fatal("failure did not reset return")
+	}
+	a.Alive = true
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.ReturnGood != 1 {
+		t.Fatal(next)
+	}
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(3*time.Second))
+	if next.Current != state.Current || next.ReturnGood != 2 {
+		t.Fatal("return ignored cooldown", next)
+	}
+	next = decideGroup(g, all, next, now.Add(time.Minute))
+	if next.Current != a.Tag {
+		t.Fatal("return after cooldown missing", next)
+	}
+}
+func TestReturnPreferredDisabledRemovedAndStale(t *testing.T) {
+	g, all, state, now := returnFixture()
+	g.ReturnToPreferred = false
+	next := decideGroup(g, all, state, now)
+	if next.Current != state.Current || next.ReturnGood != 0 {
+		t.Fatal("disabled return")
+	}
+	g.ReturnToPreferred = true
+	g.Nodes = []string{"2"}
+	next = decideGroup(g, all, state, now)
+	if next.Current != state.Current || next.ReturnGood != 0 {
+		t.Fatal("removed preferred used")
+	}
+	g.Nodes = []string{"1", "2"}
+	a := all["auto-vpn-7-1-"]
+	a.Checked = now.Add(-time.Hour).Unix()
+	all[a.Tag] = a
+	next = decideGroup(g, all, state, now)
+	if next.ReturnGood != 0 {
+		t.Fatal("stale return accepted")
+	}
+}
+func TestReturnPreferredFromBlockStillRequiresTwoChecks(t *testing.T) {
+	g, all, state, now := returnFixture()
+	g.Cooldown = 0
+	state.Current = "block"
+	b := all["auto-vpn-7-2-"]
+	b.Alive = false
+	all[b.Tag] = b
+	next := decideGroup(g, all, state, now)
+	if next.Current != "block" || next.ReturnGood != 1 {
+		t.Fatal("unconfirmed recovery", next)
+	}
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.ReturnGood != 1 {
+		t.Fatal("block poll erased return progress", next)
+	}
+	a := all["auto-vpn-7-1-"]
+	a.Checked++
+	all[a.Tag] = a
+	next = decideGroup(g, all, next, now.Add(2*time.Second))
+	if next.Current != a.Tag {
+		t.Fatal("confirmed recovery lost", next)
+	}
+}
+func TestReturnPreferenceDoesNotChangePendingConfig(t *testing.T) {
+	configDatabase(t)
+	g := BalanceGroup{ID: "7", Nodes: []string{"1", "2"}, Interval: 30, Mode: "failover", ThresholdMS: 1000, Failures: 2, Cooldown: 60, ReturnToPreferred: true, ReturnSuccesses: 2}
+	if e := saveGroups([]BalanceGroup{g}); e != nil {
+		t.Fatal(e)
+	}
+	c := map[string]any{"routing": map[string]any{"balancers": []any{map[string]any{"tag": "group-7"}}}}
+	for _, id := range []string{"1", "2"} {
+		if e := saveSetting("group_preferred:7", id); e != nil {
+			t.Fatal(e)
+		}
+		if preferredGroupNode(g) != id {
+			t.Fatal("selection not persisted")
+		}
+		if groupPolicyPending(c, []BalanceGroup{g}) {
+			t.Fatal("manual selection made config dirty")
+		}
+	}
+	g.Nodes = []string{"1"}
+	if preferredGroupNode(g) != "" {
+		t.Fatal("removed preferred not ignored")
+	}
+}
+
+func TestChangingPreferredNodeRestartsReturnConfirmation(t *testing.T) {
+	g, all, state, now := returnFixture()
+	state = decideGroup(g, all, state, now)
+	g.Nodes = append(g.Nodes, "3")
+	g.PreferredNode = "3"
+	c := GroupSample{Tag: "auto-vpn-7-3-", Alive: true, DelayMS: 1500, Checked: now.Unix()}
+	all[c.Tag] = c
+	next := decideGroup(g, all, state, now)
+	if next.Current != state.Current || next.ReturnGood != 1 {
+		t.Fatal("old preference confirmation reused", next)
+	}
+	c.Checked++
+	all[c.Tag] = c
+	next = decideGroup(g, all, next, now.Add(time.Second))
+	if next.Current != c.Tag {
+		t.Fatal("last user choice not restored", next)
+	}
+}
+
+func TestDefaultReturnRequiresTwentySuccesses(t *testing.T) {
+	g, all, state, now := returnFixture()
+	g.ReturnSuccesses = 0
+	normalizeGroup(&g)
+	if g.ReturnSuccesses != 20 {
+		t.Fatal("wrong return default")
+	}
+	for i := 0; i < 20; i++ {
+		for tag, sample := range all {
+			sample.Checked = now.Unix() + int64(i)
+			all[tag] = sample
+		}
+		state = decideGroup(g, all, state, now.Add(time.Duration(i)*time.Second))
+		if i < 19 && state.Current != "auto-vpn-7-2-" {
+			t.Fatal("returned before twenty successes", i)
+		}
+	}
+	if state.Current != "auto-vpn-7-1-" {
+		t.Fatal("twenty successes did not restore preferred")
 	}
 }
