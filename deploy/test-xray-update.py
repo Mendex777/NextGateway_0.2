@@ -26,6 +26,17 @@ class UpdateTests(unittest.TestCase):
   with patch.object(m,'active',return_value=True),patch.object(m,'command',side_effect=cmd) as command:
    with self.assertRaises(RuntimeError):m.install(True)
   self.assertFalse(any(c.args[0][:2]==['systemctl','stop'] for c in command.call_args_list));self.assertEqual(m.target.read_bytes(),b'old')
+ def test_config_failure_reports_reason_without_secrets(self):
+  import subprocess
+  m.config.write_text(json.dumps({'outbounds':[{'settings':{'id':'private-uuid','pass':'secret-password'}}]}))
+  def cmd(args,**kw):
+   if args[0]=='runuser':raise subprocess.CalledProcessError(23,args,output=b'Failed to start: duplicate ruleTag private-uuid secret-password',stderr=b'')
+   return self.command(args,**kw)
+  with patch.object(m,'active',return_value=True),patch.object(m,'command',side_effect=cmd) as command:
+   with self.assertRaises(ValueError) as caught:m.install(True)
+  message=str(caught.exception)
+  self.assertIn('duplicate ruleTag',message);self.assertNotIn('private-uuid',message);self.assertNotIn('secret-password',message)
+  self.assertFalse(any(c.args[0][:2]==['systemctl','stop'] for c in command.call_args_list));self.assertEqual(m.target.read_bytes(),b'old')
  def test_failed_start_restores_old_core(self):
   with patch.object(m,'active',side_effect=[True,False]),patch.object(m,'command',side_effect=self.command) as command:
    with self.assertRaisesRegex(ValueError,'прежнее ядро'):m.install(True)

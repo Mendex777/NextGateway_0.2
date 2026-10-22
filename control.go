@@ -322,6 +322,7 @@ func buildConfig() (map[string]any, error) {
 		return nil, e
 	}
 	enableTrafficStats(config)
+	uniqueConnectionRuleTags(config)
 	return config, nil
 }
 func enqueue(action string, config map[string]any) error {

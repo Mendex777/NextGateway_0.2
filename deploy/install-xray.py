@@ -34,7 +34,22 @@ def install(update=False):
   version=command([str(candidate),'version']).stdout.decode().split()
   if len(version)<2 or version[0]!='Xray' or version[1]!=str(release['tag_name']).removeprefix('v'):raise ValueError('Binary version mismatch')
   if update and config.exists():
-   command(['runuser','-u','ngxray','--',str(candidate),'run','-test','-c',str(config)],env={**os.environ,'XRAY_LOCATION_ASSET':'/usr/local/share/ngpanel-geodata'},timeout=30)
+   try:
+    command(['runuser','-u','ngxray','--',str(candidate),'run','-test','-c',str(config)],env={**os.environ,'XRAY_LOCATION_ASSET':'/usr/local/share/ngpanel-geodata'},timeout=30)
+   except subprocess.CalledProcessError as exc:
+    details=((exc.stdout or b'')+b'\n'+(exc.stderr or b'')).decode('utf-8','replace')
+    def redact(value):
+     nonlocal details
+     if isinstance(value,dict):
+      for key,child in value.items():
+       if key in ('id','user','pass','password','publicKey','privateKey','shortId') and isinstance(child,str) and child:details=details.replace(child,'[REDACTED]')
+       else:redact(child)
+     elif isinstance(value,list):
+      for child in value:redact(child)
+    try:redact(json.loads(config.read_text()))
+    except (ValueError,OSError):details='Проверка конфигурации завершилась ошибкой'
+    reason=next((line for line in reversed(details.splitlines()) if line.strip()),'Неизвестная ошибка проверки')
+    raise ValueError('Новое ядро отклонило текущую конфигурацию; прежнее ядро продолжает работу. '+reason[:1200]) from None
   if had_binary:shutil.copy2(target,backup)
   try:
    if running:command(['systemctl','stop','xray'])
