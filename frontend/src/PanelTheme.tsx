@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { App as AntApp, ConfigProvider, theme } from "antd";
 import ruRU from "antd/locale/ru_RU";
 
+export const defaultUpload="#c4b5fd",defaultDownload="#8b5cf6";
 export const defaultAccent = "#615fff";
 export const palettes = [
   { color: "#c65bd6", label: "Фиолетово-розовый" },
@@ -20,9 +21,10 @@ export type BaseTheme = typeof baseThemes[number]["id"];
 const themeKey = "ngpanel-base-theme";
 const key = "ngpanel-accent";
 const valid = (value: string) => /^#[0-9a-f]{6}$/i.test(value);
+export type NetworkView="map"|"flows";
 export type Density = "normal" | "compact";
 const densityKey="ngpanel-density",animationKey="ngpanel-map-animation",speedKey="ngpanel-map-speeds";
-const ThemeContext = createContext({ density:"normal" as Density,setDensity:(_:Density)=>{},mapAnimation:true,setMapAnimation:(_:boolean)=>{},mapSpeeds:true,setMapSpeeds:(_:boolean)=>{},resetAppearance:()=>{},accent: defaultAccent, setAccent: (_: string) => {}, baseTheme: "dark" as BaseTheme, setBaseTheme: (_: BaseTheme) => {} });
+const ThemeContext = createContext({trafficUpload:defaultUpload,trafficDownload:defaultDownload,setTrafficUpload:(_:string)=>{},setTrafficDownload:(_:string)=>{},networkView:"map" as NetworkView,setNetworkView:(_:NetworkView)=>{},density:"normal" as Density,setDensity:(_:Density)=>{},mapAnimation:true,setMapAnimation:(_:boolean)=>{},mapSpeeds:true,setMapSpeeds:(_:boolean)=>{},resetAppearance:()=>{},accent: defaultAccent, setAccent: (_: string) => {}, baseTheme: "dark" as BaseTheme, setBaseTheme: (_: BaseTheme) => {} });
 export const usePanelTheme = () => useContext(ThemeContext);
 function ThemeVariables({ children, palette }: { children: ReactNode; palette: typeof baseThemes[number] }) {
   const { token } = theme.useToken();
@@ -58,15 +60,23 @@ export default function PanelTheme({ children }: { children: ReactNode }) {
     updateAccent(color);
     try { localStorage.setItem(key, color); } catch { /* Theme remains usable when storage is unavailable. */ }
   };
+  const readTrafficColor=(key:string,fallback:string)=>{try{const value=localStorage.getItem(key);return value&&valid(value)?value:fallback;}catch{return fallback;}};
+  const [trafficUpload,updateTrafficUpload]=useState(()=>readTrafficColor("ngpanel-traffic-upload",defaultUpload));
+  const [trafficDownload,updateTrafficDownload]=useState(()=>readTrafficColor("ngpanel-traffic-download",defaultDownload));
+  const setTrafficUpload=(value:string)=>{if(!valid(value))return;updateTrafficUpload(value);try{localStorage.setItem("ngpanel-traffic-upload",value);}catch{}};
+  const setTrafficDownload=(value:string)=>{if(!valid(value))return;updateTrafficDownload(value);try{localStorage.setItem("ngpanel-traffic-download",value);}catch{}};
+  useEffect(()=>{document.documentElement.style.setProperty("--ng-traffic-upload",trafficUpload);document.documentElement.style.setProperty("--ng-traffic-download",trafficDownload);},[trafficUpload,trafficDownload]);
+  const [networkView,updateNetworkView]=useState<NetworkView>(()=>{try{const saved=JSON.parse(localStorage.getItem("ngpanel-network-view")||'"map"');return ["flows","circle","terminal"].includes(saved)?"flows":"map";}catch{return "map";}});
+  const setNetworkView=(value:NetworkView)=>{if(value!=="map"&&value!=="flows")return;updateNetworkView(value);try{localStorage.setItem("ngpanel-network-view",JSON.stringify(value));}catch{}};
   const [density,updateDensity]=useState<Density>(()=>{try{return localStorage.getItem(densityKey)==="compact"?"compact":"normal";}catch{return "normal";}});
   const [mapAnimation,updateMapAnimation]=useState(()=>{try{return localStorage.getItem(animationKey)!=="off";}catch{return true;}});
   const [mapSpeeds,updateMapSpeeds]=useState(()=>{try{return localStorage.getItem(speedKey)!=="off";}catch{return true;}});
   const setMapSpeeds=(value:boolean)=>{updateMapSpeeds(value);try{localStorage.setItem(speedKey,value?"on":"off");}catch{}};
   const setDensity=(value:Density)=>{if(value!=="normal"&&value!=="compact")return;updateDensity(value);try{localStorage.setItem(densityKey,value);}catch{}};
   const setMapAnimation=(value:boolean)=>{updateMapAnimation(value);try{localStorage.setItem(animationKey,value?"on":"off");}catch{}};
-  const resetAppearance=()=>{setBaseTheme("dark");setAccent(defaultAccent);setDensity("normal");setMapAnimation(true);setMapSpeeds(true);};
+  const resetAppearance=()=>{setBaseTheme("dark");setAccent(defaultAccent);setDensity("normal");setMapAnimation(true);setMapSpeeds(true);setNetworkView("map");setTrafficUpload(defaultUpload);setTrafficDownload(defaultDownload);};
   useEffect(()=>{document.documentElement.dataset.density=density;document.documentElement.dataset.mapAnimation=mapAnimation?"on":"off";},[density,mapAnimation]);
-  return <ThemeContext.Provider value={{ accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,mapSpeeds,setMapSpeeds,resetAppearance }}>
+  return <ThemeContext.Provider value={{trafficUpload,trafficDownload,setTrafficUpload,setTrafficDownload,networkView,setNetworkView,accent, setAccent, baseTheme, setBaseTheme,density,setDensity,mapAnimation,setMapAnimation,mapSpeeds,setMapSpeeds,resetAppearance }}>
     <ConfigProvider locale={ruRU} theme={{
       algorithm: light ? theme.defaultAlgorithm : theme.darkAlgorithm,
       token: { fontFamily: '"NGFlagEmoji", "Geist Variable", sans-serif', colorPrimary: accent, colorInfo: accent, colorLink: accent,
