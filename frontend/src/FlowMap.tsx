@@ -27,7 +27,9 @@ export default function FlowMap({nodes,routes,routesReady,deviceReady,exitReady,
  },[]);
  const devices=nodes.filter(n=>n.kind==="device"),exits=nodes.filter(n=>n.kind==="exit"),gateway=nodes.find(n=>n.kind==="gateway");
  const small=width<560;
- const rowStep=small?(mapSpeeds?60:34):20;
+ const minStep=small?(mapSpeeds?60:34):20;
+ const spacing=(count:number)=>minStep+12*Math.max(0,Math.min(1,(20-count)/14));
+ const deviceStep=spacing(devices.length),exitStep=spacing(exits.length);
  const labelWidth=Math.min(mapSpeeds&&!small?293:190,Math.max(86,width*(small?.29:mapSpeeds?.32:.22)));
  const exitLabelWidth=small?labelWidth:Math.min(labelWidth+55,width*.39);
  const blocks:{key:string;group?:FlowGroup;nodes:FlowNode[]}[]=[],byGroup=new Map<string,typeof blocks[number]>();
@@ -36,16 +38,16 @@ export default function FlowMap({nodes,routes,routesReady,deviceReady,exitReady,
   if(group){let block=byGroup.get(group.id);if(!block){block={key:group.id,group,nodes:[]};byGroup.set(group.id,block);blocks.push(block);}block.nodes.push(n);}
   else blocks.push({key:n.id,nodes:[n]});
  }
- const blockGap=16,exitHeight=blocks.reduce((sum,b)=>sum+b.nodes.length*rowStep+(b.group?46:0),0)+Math.max(0,blocks.length-1)*blockGap;
- const height=Math.max(420,devices.length*rowStep+16,exitHeight+16);
+ const blockGap=16,exitHeight=blocks.reduce((sum,b)=>sum+b.nodes.length*exitStep+(b.group?46:0),0)+Math.max(0,blocks.length-1)*blockGap;
+ const height=Math.max(420,devices.length*deviceStep+16,exitHeight+16);
  const center={x:width/2,y:height/2},positions=new Map<string,{x:number;y:number}>([["gateway",center]]);
- devices.forEach((n,i)=>positions.set(n.id,{x:labelWidth+16,y:height/2+(i-(devices.length-1)/2)*rowStep}));
+ devices.forEach((n,i)=>positions.set(n.id,{x:labelWidth+16,y:height/2+(i-(devices.length-1)/2)*deviceStep}));
  let cursor=(height-exitHeight)/2;
  const frames:{group:FlowGroup;top:number;height:number}[]=[];
  for(const block of blocks){
-  const blockHeight=block.nodes.length*rowStep+(block.group?46:0);
+  const blockHeight=block.nodes.length*exitStep+(block.group?46:0);
   if(block.group)frames.push({group:block.group,top:cursor,height:blockHeight});
-  block.nodes.forEach((n,i)=>positions.set(n.id,{x:width-exitLabelWidth-16,y:cursor+(block.group?34:0)+(i+.5)*rowStep}));
+  block.nodes.forEach((n,i)=>positions.set(n.id,{x:width-exitLabelWidth-16,y:cursor+(block.group?34:0)+(i+.5)*exitStep}));
   cursor+=blockHeight+blockGap;
  }
  const measuredFlows=buildVisibleFlows(nodes,routes,routesReady,deviceReady,exitReady,connections,connectionsReady);
