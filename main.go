@@ -509,7 +509,9 @@ func pageData(r *http.Request) Page {
 	}
 	p := Page{Tab: r.URL.Query().Get("tab"), Message: r.URL.Query().Get("message"), Mode: setting("default_route"), Runtime: readRuntime(), DNS: setting("dns_direct"), DNSMode: setting("dns_mode"), Gateway: setting("gateway_enabled"), Selected: setting("selected_node")}
 	p.Network = gatewayNetwork()
-	if detected, e := detectNetwork(); e == nil {
+	if p.Tab == "" || p.Tab == "status" {
+		populateStatusHost(&p)
+	} else if detected, e := detectNetwork(); e == nil {
 		p.DetectedNetwork = detected
 	} else {
 		p.NetworkError = e.Error()
@@ -536,18 +538,6 @@ func pageData(r *http.Request) Page {
 
 	if p.Tab == "status" {
 		p.Home = homeOverview(p.Runtime)
-		if p.Runtime.Gateway {
-			policy := command("ip", "-4", "rule")
-			routes := command("ip", "-4", "route", "show", "table", "100")
-			if !strings.Contains(policy, "fwmark 0x1 lookup 100") || !strings.Contains(routes, "local default dev lo") {
-				p.GatewayHealth = "Отсутствует правило или маршрут TPROXY. Примените конфигурацию для восстановления."
-			}
-		}
-		p.Version = command("xray", "version")
-		p.Service = command("systemctl", "is-active", "xray")
-		p.Routes = command("ip", "route")
-		p.Memory = command("free", "-h")
-		p.Uptime = command("uptime", "-p")
 		p.Components = componentOverview(p)
 		p.Readiness = overallReadiness(p)
 		p.GatewayReady = p.Runtime.Gateway && strings.TrimSpace(p.Service) == "active" && p.GatewayHealth == ""

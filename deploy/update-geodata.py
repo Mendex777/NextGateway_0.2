@@ -1,9 +1,10 @@
 #!/usr/bin/python3
 """Verified geodata update; invoked under the controller's exclusive lock."""
-import datetime, hashlib, json, os, pathlib, shutil, sqlite3, subprocess, tempfile, urllib.request
+import stat, datetime, hashlib, json, os, pathlib, shutil, sqlite3, subprocess, tempfile, urllib.request
 
 CURRENT=pathlib.Path('/usr/local/share/ngpanel-geodata')
 VERSIONS=pathlib.Path('/usr/local/share/ngpanel-geodata-versions')
+CONFIG_DIR=pathlib.Path('/etc/ngpanel')
 def download(url,limit):
     with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'NGPanel-beta'}),timeout=45) as response:
         data=response.read(limit+1)
@@ -13,6 +14,37 @@ def command(args,**kwargs):return subprocess.run(args,check=True,timeout=45,capt
 def activate(path):
     link=CURRENT.with_name(CURRENT.name+'.new')
     link.unlink(missing_ok=True);link.symlink_to(path,target_is_directory=True);os.replace(link,CURRENT)
+def compatible_rollback(raw):
+    """Only disambiguate generated metadata; routing matches and targets stay intact."""
+    config=json.loads(raw);rules=config.get('routing',{}).get('rules',[])
+    reserved={r.get('ruleTag') for r in rules if isinstance(r.get('ruleTag'),str)};seen=set();changed=False
+    for index,rule in enumerate(rules):
+        tag=rule.get('ruleTag')
+        if not isinstance(tag,str) or not tag:continue
+        if tag in seen and tag.startswith(('ngpanel-system:','ngpanel-rule:')):
+            candidate=tag+':ngpanel-'+str(index+1)
+            while candidate in reserved:candidate+='-'
+            rule['ruleTag']=candidate;reserved.add(candidate);changed=True
+        seen.add(tag)
+    return (json.dumps(config,ensure_ascii=False,separators=(',',':'))+'\n').encode() if changed else raw
+
+def replace_config(path,content,metadata):
+    temporary=path.with_name(path.name+'.geodata-new')
+    try:
+        temporary.write_bytes(content);temporary.chmod(stat.S_IMODE(metadata.st_mode));os.chown(temporary,metadata.st_uid,metadata.st_gid)
+        os.replace(temporary,path)
+    finally:temporary.unlink(missing_ok=True)
+
+def repair_rollback(path,original,prepared):
+    if path.read_bytes()!=original:raise ValueError('Конфигурация отката изменилась во время проверки; повторите обновление')
+    metadata=path.stat();backup=path.with_name('previous-before-geodata-tags.json')
+    if backup.exists() and backup.read_bytes()!=original:raise ValueError('Сохраните существующую резервную копию previous-before-geodata-tags.json перед повторным ремонтом')
+    if not backup.exists():
+        with backup.open('xb') as stream:
+            os.fchmod(stream.fileno(),0o600);stream.write(original)
+    replace_config(path,prepared,metadata)
+    return metadata
+
 def update():
     VERSIONS.mkdir(exist_ok=True)
     # The installer uses umask 077; both ngpanel and ngxray need traversal.
@@ -41,16 +73,19 @@ def update():
                     if token.startswith(('geosite:','geoip:')) and token not in tokens:
                         raise ValueError('Базы не заменены: сохранённая категория отсутствует: '+token[:160])
         environment={**os.environ,'XRAY_LOCATION_ASSET':str(stage)}
+        repairs=[]
         for filename in ('config.json','previous.json'):
-            config=pathlib.Path('/etc/ngpanel')/filename
+            config=CONFIG_DIR/filename
             if not config.exists():continue
             # previous.json may be root-only; use a bounded, group-readable test copy.
-            candidate=pathlib.Path('/etc/ngpanel/geodata-candidate.json')
+            candidate=CONFIG_DIR/'geodata-candidate.json'
             import pwd
-            candidate.write_bytes(config.read_bytes());candidate.chmod(0o640);os.chown(candidate,0,pwd.getpwnam('ngxray').pw_gid)
+            original=config.read_bytes();prepared=compatible_rollback(original) if filename=='previous.json' else original
+            candidate.write_bytes(prepared);candidate.chmod(0o640);os.chown(candidate,0,pwd.getpwnam('ngxray').pw_gid)
             try:
                 result=subprocess.run(['runuser','-u','ngxray','--','/usr/local/bin/xray','run','-test','-c',str(candidate)],env=environment,timeout=45,capture_output=True)
-                if result.returncode:raise ValueError('Новые geo-базы несовместимы с применённой или предыдущей конфигурацией; старые базы сохранены')
+                if result.returncode:raise ValueError('Новые geo-базы не прошли проверку '+filename+'; прежние базы и конфигурация сохранены')
+                if prepared!=original:repairs.append((config,original,prepared))
             finally:candidate.unlink(missing_ok=True)
         (stage/'source.txt').write_text('Loyalsoldier/v2ray-rules-dat '+release['tag_name']+'; SHA-256 verified; '+datetime.datetime.now(datetime.timezone.utc).isoformat())
         (stage/'source.txt').chmod(0o644)
@@ -62,7 +97,10 @@ def update():
             activate(previous)
         else:previous=None
         running=subprocess.run(['systemctl','is-active','--quiet','xray']).returncode==0
+        repaired=[]
         try:
+            for config,original,prepared in repairs:
+                metadata=repair_rollback(config,original,prepared);repaired.append((config,original,metadata))
             activate(stage)
             if running:
                 command(['systemctl','restart','xray'])
@@ -70,6 +108,7 @@ def update():
                 time.sleep(2)
                 command(['systemctl','is-active','--quiet','xray'])
         except Exception:
+            for config,original,metadata in reversed(repaired):replace_config(config,original,metadata)
             if previous:activate(previous)
             else:CURRENT.unlink(missing_ok=True)
             if running:command(['systemctl','restart','xray'])

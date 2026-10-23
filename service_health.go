@@ -20,11 +20,14 @@ import (
 
 type ServiceCheck struct{ ID, Name, State, Summary, Expected, Actual string }
 type ServiceHealth struct {
+	Host    *statusHostSnapshot `json:"Host,omitempty"`
 	Updated time.Time
 	Checks  []ServiceCheck
 	Message string
 }
 type healthEvidence struct {
+	XrayPID                                                                 int
+	ActiveSince                                                             uint64
 	Runtime                                                                 Runtime
 	Config, NFT, Baseline, Addresses, Routes, Rules, LocalRoutes            []byte
 	Active, Version, Listeners, Forward, Filter, InterfaceFilter, Autostart string
@@ -336,11 +339,12 @@ func healthDNS() bool {
 }
 
 type healthCollector struct {
-	signature string
-	valid     bool
-	tested    time.Time
-	dnsAt     time.Time
-	dnsOK     bool
+	signature           string
+	valid               bool
+	tested              time.Time
+	dnsAt               time.Time
+	dnsOK               bool
+	versionKey, version string
 }
 
 func (c *healthCollector) sample() ServiceHealth {
@@ -352,10 +356,27 @@ func (c *healthCollector) sample() ServiceHealth {
 	e.Routes, _ = healthCommand("ip", "-j", "-4", "route", "show")
 	e.Rules, _ = healthCommand("ip", "-j", "-4", "rule", "show")
 	e.LocalRoutes, _ = healthCommand("ip", "-j", "-4", "route", "show", "table", "100")
-	b, _ := healthCommand("systemctl", "is-active", "xray")
-	e.Active = string(b)
-	b, _ = healthCommand("/usr/local/bin/xray", "version")
-	e.Version = string(b)
+	b, _ := healthCommand("systemctl", "show", "xray", "--property=ActiveState,MainPID,ActiveEnterTimestampMonotonic")
+	for _, line := range strings.Split(string(b), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "ActiveState":
+			e.Active = value
+		case "MainPID":
+			e.XrayPID, _ = strconv.Atoi(value)
+		case "ActiveEnterTimestampMonotonic":
+			e.ActiveSince, _ = strconv.ParseUint(value, 10, 64)
+		}
+	}
+	versionKey := healthFileIdentity("/usr/local/bin/xray")
+	if versionKey != c.versionKey || c.version == "" {
+		b, _ = healthCommand("/usr/local/bin/xray", "version")
+		c.version, c.versionKey = string(b), versionKey
+	}
+	e.Version = c.version
 	b, _ = healthCommand("ss", "-H", "-lnt")
 	e.Listeners = string(b)
 	u, _ := healthCommand("ss", "-H", "-lnu")
@@ -375,27 +396,22 @@ func (c *healthCollector) sample() ServiceHealth {
 		b, _ = os.ReadFile(filepath.Join("/proc/sys/net/ipv4/conf", iface, "rp_filter"))
 		e.InterfaceFilter = string(b)
 	}
-	signature := healthHash(e.Config) + e.Version
-	// Permission and ownership drift must also invalidate the core validation cache.
-	for _, path := range []string{"/etc/ngpanel/config.json", "/etc/ngpanel", "/usr/local/share/ngpanel-geodata"} {
-		if info, err := os.Stat(path); err == nil {
-			signature += fmt.Sprint(info.Mode(), info.ModTime().UnixNano())
-			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-				signature += fmt.Sprint(stat.Uid, stat.Gid)
-			}
-		}
-	}
 	for _, name := range []string{"geosite.dat", "geoip.dat"} {
 		if info, err := os.Stat(filepath.Join("/usr/local/share/ngpanel-geodata", name)); err == nil && info.Size() > 0 {
 			e.Geo[name] = fmt.Sprintf("%.1f МБ · %s", float64(info.Size())/1048576, info.ModTime().UTC().Format("02.01.2006"))
-			signature += fmt.Sprint(info.Size(), info.ModTime().UnixNano(), info.Mode())
 		}
 	}
-	if signature != c.signature || time.Since(c.tested) > time.Minute {
+	account, accountErr := user.Lookup("ngxray")
+	accountKey := "missing"
+	if accountErr == nil {
+		accountKey = account.Uid + ":" + account.Gid
+	}
+	signature := healthValidationSignature(e.Config, e.Version, accountKey, []string{"/etc/ngpanel/config.json", "/etc/ngpanel", "/usr/local/bin/xray", "/usr/local/share/ngpanel-geodata", "/usr/local/share/ngpanel-geodata/geosite.dat", "/usr/local/share/ngpanel-geodata/geoip.dat"})
+	if c.validationDue(signature, time.Now()) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		cmd := exec.CommandContext(ctx, "/usr/local/bin/xray", "run", "-test", "-c", "/etc/ngpanel/config.json")
 		cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET=/usr/local/share/ngpanel-geodata")
-		account, err := user.Lookup("ngxray")
+		err := accountErr
 		c.valid = false
 		if err == nil {
 			uid, _ := strconv.Atoi(account.Uid)
@@ -414,7 +430,9 @@ func (c *healthCollector) sample() ServiceHealth {
 		c.dnsAt = time.Now()
 	}
 	e.DNSOK = c.dnsOK
-	return buildServiceHealth(e)
+	h := buildServiceHealth(e)
+	h.Host = healthHostSnapshot(e, h)
+	return h
 }
 func collectServiceHealth() error {
 	group, e := user.LookupGroup("ngpanel")

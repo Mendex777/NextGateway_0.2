@@ -22,10 +22,13 @@ import type { Page } from "./types";
 import type { Run } from "./common";
 import "./dashboard.css";
 import HomeOverview from "./HomeOverview";
+import {receiveMetrics} from "./metrics-freshness";
 import SystemHistory from "./SystemHistory";
 
 export interface Metrics {
   time: number;
+  receivedAt?: number;
+  ageAtReceipt?: number;
   cpu: number;
   cores: number;
   physicalCores: number;
@@ -126,7 +129,9 @@ export default function Dashboard({
       if (loading) return;
       loading = true;
       try {
-        const history = await getJSON<Metrics[]>("/api/dashboard/history");
+        const response=await fetch("/api/dashboard/history",{cache:"no-store"});
+        if(!response.ok)throw new Error("Metrics unavailable");
+        const history=receiveMetrics(await response.json() as Metrics[],response.headers.get("Date"));
         if (!stopped) {
           setSamples(history);
           setFailure("");

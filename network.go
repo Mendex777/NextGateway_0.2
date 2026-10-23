@@ -99,26 +99,7 @@ func detectNetwork() (GatewayNetwork, error) {
 			if e == nil && subnet.Contains(net.ParseIP(n.Router)) {
 				n.Address = a.Local
 				n.CIDR = subnet.String()
-				for _, path := range []string{"/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"} {
-					raw, err := os.ReadFile(path)
-					if err != nil {
-						continue
-					}
-					var servers []string
-					for _, line := range strings.Split(string(raw), "\n") {
-						fields := strings.Fields(line)
-						if len(fields) >= 2 && fields[0] == "nameserver" {
-							ip := net.ParseIP(fields[1])
-							if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
-								servers = append(servers, ip.String())
-							}
-						}
-					}
-					if len(servers) > 0 {
-						n.SystemDNS = strings.Join(servers, "\n")
-						break
-					}
-				}
+				n.SystemDNS = systemDNSServers()
 				return n, n.validate()
 			}
 		}
@@ -147,4 +128,28 @@ func saveNetwork(n GatewayNetwork) error {
 	}
 	raw, _ := json.Marshal(n)
 	return saveSetting("gateway_network", string(raw))
+}
+
+func systemDNSServers() string {
+	for _, path := range []string{"/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var servers []string
+		for _, line := range strings.Split(string(raw), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "nameserver" {
+				ip := net.ParseIP(fields[1])
+				if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+					servers = append(servers, ip.String())
+				}
+			}
+		}
+		if len(servers) > 0 {
+			return strings.Join(servers, "\n")
+		}
+	}
+
+	return ""
 }

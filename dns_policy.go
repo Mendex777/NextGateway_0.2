@@ -102,12 +102,9 @@ func bootstrapDNS() string {
 	if override := strings.TrimSpace(setting("dns_direct")); override != "" {
 		return override
 	}
-	network, err := detectNetwork()
-	if err == nil {
-		for _, server := range strings.Fields(network.SystemDNS) {
-			if validIPv4(server) {
-				return server
-			}
+	for _, server := range strings.Fields(systemDNSServers()) {
+		if validIPv4(server) {
+			return server
 		}
 	}
 	return ""

@@ -1,3 +1,4 @@
+import {metricsFresh} from "./metrics-freshness";
 import {useEffect,useState} from "react";
 import {App,Button,Popover,Tooltip} from "antd";
 import {ArrowUpCircle,RefreshCw,FileJson,Archive,RotateCw,Square,Play} from "lucide-react";
@@ -16,7 +17,7 @@ const geoDate=(v:string)=>/^\d{8}/.test(v)?`${v.slice(6,8)}.${v.slice(4,6)}.${v.
 export default function ServiceHealth({p,run,working,metrics,onTool}:{p:Page;run:Run;working:boolean;metrics?:Metrics;onTool:(tool:string)=>void}){
  const {modal}=App.useApp();
  const active=p.Service.trim()==="active";
- const fresh=metrics&&Date.now()-metrics.time<10000?metrics:undefined;
+ const fresh=metrics&&metricsFresh(metrics)?metrics:undefined;
  const [health,setHealth]=useState<Health>();const [updates,setUpdates]=useState<Updates>();
  const [failed,setFailed]=useState(false);const [now,setNow]=useState(Date.now());
  useEffect(()=>{

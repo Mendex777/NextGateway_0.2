@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -176,7 +174,10 @@ func hostDashboard() dashboardMetrics {
 		m.DiskTotal = disk.Blocks * uint64(disk.Bsize)
 		m.Disk = (disk.Blocks - disk.Bfree) * uint64(disk.Bsize)
 	}
-	n, _ := detectNetwork()
+	n := GatewayNetwork{}
+	if host := currentStatusHost(readServiceHealth(), now); host != nil {
+		n = host.Network
+	}
 	m.Interface = n.Interface
 	if m.Interface != "" {
 		read := func(name string) uint64 {
@@ -207,22 +208,11 @@ func hostDashboard() dashboardMetrics {
 	proc := procNumbers("/proc/self/status")
 	m.PanelMemory = proc["VmRSS"]
 	m.Threads = int(proc["Threads"])
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	b, e := exec.CommandContext(ctx, "systemctl", "show", "xray", "--property=ActiveEnterTimestampMonotonic,MainPID").Output()
-	if e == nil {
-		properties := map[string]string{}
-		for _, line := range strings.Split(string(b), "\n") {
-			key, value, ok := strings.Cut(line, "=")
-			if ok {
-				properties[key] = value
-			}
+	if host := currentStatusHost(readServiceHealth(), now); host != nil {
+		m.XrayPID = host.XrayPID
+		if host.ActiveSince > 0 && m.Uptime > float64(host.ActiveSince)/1e6 {
+			m.XrayUptime = m.Uptime - float64(host.ActiveSince)/1e6
 		}
-		micros, _ := strconv.ParseFloat(properties["ActiveEnterTimestampMonotonic"], 64)
-		if micros > 0 && m.Uptime > micros/1e6 {
-			m.XrayUptime = m.Uptime - micros/1e6
-		}
-		m.XrayPID, _ = strconv.Atoi(properties["MainPID"])
 		if m.XrayPID > 0 {
 			process := procNumbers(filepath.Join("/proc", strconv.Itoa(m.XrayPID), "status"))
 			m.XrayMemory = process["VmRSS"]

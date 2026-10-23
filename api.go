@@ -2,11 +2,13 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +21,14 @@ var frontendAssets embed.FS
 func newRouter() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
+	statusCache := &statusResponseCache{ttl: time.Second, now: time.Now}
+	router.Use(func(c *gin.Context) {
+		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions {
+			statusCache.invalidate()
+			defer statusCache.invalidate()
+		}
+		c.Next()
+	})
 	router.Use(gin.Recovery(), func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
@@ -31,6 +41,17 @@ func newRouter() http.Handler {
 			return
 		}
 		c.Header("Cache-Control", "no-store")
+		if cacheableStatusRequest(c.Request) {
+			raw, err := statusCache.load(c.Request.Context(), func() ([]byte, error) { return json.Marshal(pageData(c.Request)) })
+			if err != nil {
+				if c.Request.Context().Err() == nil {
+					c.JSON(500, gin.H{"error": "State collection failed"})
+				}
+				return
+			}
+			c.Data(200, "application/json; charset=utf-8", raw)
+			return
+		}
 		c.JSON(200, pageData(c.Request))
 	})
 	router.GET("/api/map/devices", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, gin.H{"Devices": devices()}) })

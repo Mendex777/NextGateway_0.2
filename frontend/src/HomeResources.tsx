@@ -1,3 +1,4 @@
+import {metricsFresh} from "./metrics-freshness";
 import {Button,Popover} from "antd";
 import {Cpu,MemoryStick,HardDrive,Clock,ChartNoAxesCombined,ScrollText} from "lucide-react";
 import type {Metrics} from "./Dashboard";
@@ -6,7 +7,7 @@ const bytes=SizeFormatter.sizeFormat;
 const pct=(used:number,total:number)=>total>0?Math.max(0,Math.min(100,used/total*100)):0;
 const duration=(s:number)=>s>=86400?`${Math.floor(s/86400)} д ${Math.floor(s%86400/3600)} ч`:s>=3600?`${Math.floor(s/3600)} ч ${Math.floor(s%3600/60)} мин`:`${Math.floor(s/60)} мин`;
 export default function HomeResources({metrics,failure,onHistory,onLogs}:{metrics?:Metrics;failure:string;onHistory:()=>void;onLogs:()=>void}){
- const m=metrics&&!failure&&Date.now()-metrics.time<10000?metrics:undefined;
+ const m=metrics&&!failure&&metricsFresh(metrics)?metrics:undefined;
  const memory=m?pct(m.memory,m.memoryTotal):0;const disk=m?pct(m.disk,m.diskTotal):0;
  const rows=[
   {id:'cpu',name:'Процессор',icon:Cpu,value:m?`${m.cpu.toFixed(1)} %`:'—',usage:m?.cpu,detail:m?`Логических ядер: ${m.cores}; физических: ${m.physicalCores||"—"}; частота: ${(m.cpuMHz/1000).toFixed(2)} ГГц.`:'Нет актуальных данных'},
