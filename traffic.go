@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -387,10 +388,14 @@ func collectTraffic() error {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	step := 0
-	routes := trafficRouteTracker{}
-	udpRoutes := udpRouteTracker{}
-	udpPID := ""
-	udpCone := false
+	reader := trafficAggregateReader{}
+	defer reader.netlink.close()
+	config := trafficConfigCache{}
+	jobs := make(chan trafficDetailJob)
+	results := make(chan trafficDetailResult, 1)
+	go runTrafficDetails(ctx, jobs, results)
+	var detail trafficDetailResult
+	var nextDetail, lastCounterError time.Time
 	for {
 		snapshot := TrafficSnapshot{Updated: time.Now().UTC(), Started: started, Devices: map[string]TrafficValue{}, Outbounds: map[string]TrafficValue{}}
 		// Historical totals remain visible when a device/exit is idle or removed.
@@ -405,35 +410,32 @@ func collectTraffic() error {
 		runtime := readRuntime()
 		if runtime.Gateway {
 			call, cancel := context.WithTimeout(ctx, 2*time.Second)
-			configRaw, e := os.ReadFile("/etc/ngpanel/config.json")
-			var exits []trafficExit
-			if e == nil {
-				exits, e = parseTrafficExits(configRaw)
-			}
+			e := config.load(runtime.AppliedNetwork, core.Uid)
 			var raw map[string]trafficRaw
 			var generation string
 			if e == nil {
-				raw, generation, e = readTrafficNFT(call, runtime.AppliedNetwork, core.Uid, boot, exits...)
+				raw, generation, e = reader.read(call, &config, core.Uid, boot)
 			}
 			cancel()
 			if e == nil {
 				snapshot.DevicesAvailable = true
 				snapshot.OutboundsAvailable = true
-				events := readTrafficConnections(snapshot.Updated)
 				pid := readTrafficCorePID()
-				if pid != udpPID {
-					udpCone = readTrafficCone(configRaw)
-					udpPID = pid
+				select {
+				case detail = <-results:
+				default:
 				}
-				routeEvents := make([]ConnectionEvent, 0, len(events))
-				for _, event := range events {
-					if event.Network != "udp" {
-						routeEvents = append(routeEvents, event)
+				if !snapshot.Updated.Before(nextDetail) {
+					select {
+					case jobs <- trafficDetailJob{config: config, boot: boot, pid: pid}:
+						nextDetail = snapshot.Updated.Add(3 * time.Second)
+					default:
 					}
 				}
-				routeEvents = append(routeEvents, udpRoutes.update(raw, generation, pid, boot, events, snapshot.Updated, udpCone, lookupUDPRoutes)...)
-				snapshot.Routes = routes.update(raw, generation+"/"+pid, routeEvents, snapshot.Updated, exits)
-				snapshot.RoutesAvailable = true
+				if detail.valid(snapshot.Updated, generation, pid) {
+					snapshot.Routes = detail.routes
+					snapshot.RoutesAvailable = true
+				}
 				for ip, count := range raw {
 					if strings.HasPrefix(ip, "flow:") {
 						continue
@@ -452,6 +454,10 @@ func collectTraffic() error {
 				}
 			} else {
 				snapshot.Message = "Счётчики Linux недоступны: проверьте применение конфигурации и службу учёта"
+				if time.Since(lastCounterError) >= 30*time.Second {
+					log.Printf("Traffic counter collection failed: %v", e)
+					lastCounterError = time.Now()
+				}
 			}
 		} else {
 			snapshot.Message = "Перехват трафика не включён"
